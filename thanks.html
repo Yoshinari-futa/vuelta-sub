@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Welcome to the Community | VUELTA Membership</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <!-- Header Navigation -->
+    <header class="header-nav">
+        <div class="container">
+            <div class="header-links">
+                <a href="https://www.vuelta.jp/" target="_blank" rel="noopener noreferrer" class="header-link">Website</a>
+                <span class="header-divider">•</span>
+                <a href="https://www.instagram.com/vuelta_bar" target="_blank" rel="noopener noreferrer" class="header-link">Instagram</a>
+            </div>
+        </div>
+    </header>
+
+    <!-- Thanks Section -->
+    <section class="hero">
+        <div class="hero-background"></div>
+        <div class="container">
+            <div class="hero-logo">V U E L T A</div>
+            <div class="hero-content">
+                <h1 class="hero-title">Welcome to the Community.</h1>
+                <p class="hero-catch">
+                    ご入会ありがとうございます。<br>
+                    VUELTAでの特別な時間が始まります。
+                </p>
+                <div class="thanks-message">
+                    <p class="thanks-text">
+                        会員証（Apple Wallet / Google Wallet）の発行準備が整いました。<br>
+                        メールに送信されたリンクから、スマホに保存してください。
+                    </p>
+                </div>
+                <div class="thanks-actions">
+                    <p class="thanks-note">メールが届かない場合は、下のボタンから会員証を追加できます。</p>
+                    <a href="#" id="wallet-link" class="cta-button wallet-button" style="display: none;">
+                        <span>Add to Apple Wallet</span>
+                        <svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M7.5 15L12.5 10L7.5 5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                        </svg>
+                    </a>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Footer -->
+    <footer class="footer">
+        <div class="container">
+            <div class="footer-links">
+                <a href="https://www.vuelta.jp/" target="_blank" rel="noopener noreferrer" class="footer-link">Website</a>
+                <span class="footer-divider">•</span>
+                <a href="https://www.instagram.com/vuelta_bar" target="_blank" rel="noopener noreferrer" class="footer-link">Instagram</a>
+            </div>
+            <p class="footer-text">© 2026 VUELTA. All rights reserved.</p>
+        </div>
+    </footer>
+
+    <script>
+        // URLパラメータから会員証URLを取得（Stripeリダイレクト経由の場合）
+        const urlParams = new URLSearchParams(window.location.search);
+        const walletUrl = urlParams.get('wallet_url');
+        
+        if (walletUrl) {
+            const walletLink = document.getElementById('wallet-link');
+            walletLink.href = walletUrl;
+            walletLink.style.display = 'inline-flex';
+        }
+    </script>
+</body>
+</html>

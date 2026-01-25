@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>サーバー動作確認 | VUELTA Backend</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
+            background: linear-gradient(135deg, #1a2e1a 0%, #2d4a2d 100%);
+            color: #fff;
+            min-height: 100vh;
+            padding: 40px 20px;
+        }
+        
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+        }
+        
+        h1 {
+            text-align: center;
+            margin-bottom: 40px;
+            font-size: 2.5em;
+            font-weight: 300;
+            letter-spacing: 0.1em;
+        }
+        
+        .test-section {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border-radius: 12px;
+            padding: 30px;
+            margin-bottom: 20px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+        
+        .test-section h2 {
+            font-size: 1.5em;
+            margin-bottom: 20px;
+            color: #fff;
+            font-weight: 400;
+        }
+        
+        .button {
+            background: #fff;
+            color: #1a2e1a;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 6px;
+            font-size: 16px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            margin-right: 10px;
+            margin-bottom: 10px;
+        }
+        
+        .button:hover {
+            background: #f0f0f0;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+        }
+        
+        .button:active {
+            transform: translateY(0);
+        }
+        
+        .result {
+            margin-top: 20px;
+            padding: 15px;
+            border-radius: 6px;
+            background: rgba(0, 0, 0, 0.3);
+            font-family: 'Monaco', 'Courier New', monospace;
+            font-size: 14px;
+            white-space: pre-wrap;
+            word-break: break-all;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        
+        .result.success {
+            border-left: 4px solid #4caf50;
+        }
+        
+        .result.error {
+            border-left: 4px solid #f44336;
+        }
+        
+        .result.loading {
+            border-left: 4px solid #ff9800;
+        }
+        
+        .status-indicator {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            margin-right: 8px;
+        }
+        
+        .status-indicator.online {
+            background: #4caf50;
+            box-shadow: 0 0 8px #4caf50;
+        }
+        
+        .status-indicator.offline {
+            background: #f44336;
+            box-shadow: 0 0 8px #f44336;
+        }
+        
+        .status-indicator.checking {
+            background: #ff9800;
+            box-shadow: 0 0 8px #ff9800;
+            animation: pulse 1.5s infinite;
+        }
+        
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        
+        .info {
+            background: rgba(255, 255, 255, 0.05);
+            padding: 15px;
+            border-radius: 6px;
+            margin-top: 20px;
+            font-size: 14px;
+            line-height: 1.6;
+        }
+        
+        .info code {
+            background: rgba(0, 0, 0, 0.3);
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-family: 'Monaco', 'Courier New', monospace;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>VUELTA Backend 動作確認</h1>
+        
+        <div class="test-section">
+            <h2>
+                <span class="status-indicator checking" id="statusIndicator"></span>
+                サーバーステータス
+            </h2>
+            <button class="button" onclick="checkHealth()">ヘルスチェック</button>
+            <button class="button" onclick="checkWebhook()">Webhookエンドポイント確認</button>
+            <div id="statusResult" class="result"></div>
+        </div>
+        
+        <div class="test-section">
+            <h2>環境情報</h2>
+            <div class="info">
+                <p><strong>サーバーURL:</strong> <code id="serverUrl">http://localhost:3000</code></p>
+                <p><strong>ヘルスチェック:</strong> <code>http://localhost:3000/health</code></p>
+                <p><strong>Webhook:</strong> <code>http://localhost:3000/webhook/stripe</code></p>
+            </div>
+        </div>
+        
+        <div class="test-section">
+            <h2>使い方</h2>
+            <div class="info">
+                <p>1. 「ヘルスチェック」ボタンをクリックしてサーバーが起動しているか確認</p>
+                <p>2. 「Webhookエンドポイント確認」ボタンでWebhookエンドポイントの動作を確認</p>
+                <p>3. 結果は自動的に表示されます</p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const SERVER_URL = 'http://localhost:3000';
+        const statusIndicator = document.getElementById('statusIndicator');
+        const statusResult = document.getElementById('statusResult');
+        
+        // ページ読み込み時に自動でヘルスチェック
+        window.addEventListener('load', () => {
+            checkHealth();
+        });
+        
+        async function checkHealth() {
+            statusIndicator.className = 'status-indicator checking';
+            statusResult.className = 'result loading';
+            statusResult.textContent = 'サーバーに接続中...';
+            
+            try {
+                const response = await fetch(`${SERVER_URL}/health`);
+                const data = await response.json();
+                
+                if (response.ok) {
+                    statusIndicator.className = 'status-indicator online';
+                    statusResult.className = 'result success';
+                    statusResult.textContent = `✓ サーバーは正常に動作しています！\n\n` +
+                        `ステータス: ${data.status}\n` +
+                        `タイムスタンプ: ${data.timestamp}\n` +
+                        `HTTPステータス: ${response.status} ${response.statusText}`;
+                } else {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+            } catch (error) {
+                statusIndicator.className = 'status-indicator offline';
+                statusResult.className = 'result error';
+                statusResult.textContent = `✗ サーバーに接続できませんでした\n\n` +
+                    `エラー: ${error.message}\n\n` +
+                    `確認事項:\n` +
+                    `1. サーバーが起動しているか確認してください\n` +
+                    `2. ターミナルで "npm start" を実行してください\n` +
+                    `3. ポート3000が使用可能か確認してください`;
+            }
+        }
+        
+        async function checkWebhook() {
+            statusResult.className = 'result loading';
+            statusResult.textContent = 'Webhookエンドポイントをテスト中...';
+            
+            try {
+                const response = await fetch(`${SERVER_URL}/webhook/stripe`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ test: 'data' })
+                });
+                
+                const text = await response.text();
+                
+                if (response.status === 400 && text.includes('stripe-signature')) {
+                    statusResult.className = 'result success';
+                    statusResult.textContent = `✓ Webhookエンドポイントは正常に動作しています！\n\n` +
+                        `エラーメッセージ: ${text}\n\n` +
+                        `このエラーは正常です。Stripeからのリクエストには` +
+                        `署名ヘッダーが必要ですが、テストリクエストには含まれていないためです。\n\n` +
+                        `HTTPステータス: ${response.status} ${response.statusText}`;
+                } else {
+                    statusResult.className = 'result success';
+                    statusResult.textContent = `✓ Webhookエンドポイントは応答しています\n\n` +
+                        `レスポンス: ${text}\n` +
+                        `HTTPステータス: ${response.status} ${response.statusText}`;
+                }
+            } catch (error) {
+                statusResult.className = 'result error';
+                statusResult.textContent = `✗ Webhookエンドポイントに接続できませんでした\n\n` +
+                    `エラー: ${error.message}\n\n` +
+                    `サーバーが起動しているか確認してください。`;
+            }
+        }
+        
+        // 定期的にヘルスチェック（30秒ごと）
+        setInterval(() => {
+            checkHealth();
+        }, 30000);
+    </script>
+</body>
+</html>
