@@ -10,7 +10,11 @@
       "use": "@vercel/static"
     }
   ],
-  "routes": [
+  "routes":  [
+      {
+          "src": "^/$",
+              "dest": "/public/thanks.html"
+      },
     {
       "src": "/webhook/stripe",
       "dest": "/api/webhook/stripe.js"
