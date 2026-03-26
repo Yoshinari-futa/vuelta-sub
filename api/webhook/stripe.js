@@ -42,7 +42,7 @@ function getTransporter() {
 
 // PassKit会員証生成（タイムアウト付き）
 async function generatePassKitCard({ email, name, customerId, tierId }) {
-  let passkitHost = process.env.PASSKIT_HOST || 'api.pub1.passkit.io';
+  let passkitHost = process.env.PASSKIT_HOST || 'api.pub2.passkit.io';
   if (!passkitHost.startsWith('http')) {
     passkitHost = 'https://' + passkitHost;
   }
@@ -59,21 +59,21 @@ async function generatePassKitCard({ email, name, customerId, tierId }) {
     throw new Error('PASSKIT_API_KEY and PASSKIT_API_KEY_SECRET are required');
   }
 
-  // JWT認証トークン生成
+  // JWT認証トークン生成（PassKit公式形式: uid claim, no kid header）
   const now = Math.floor(Date.now() / 1000);
   const token = jwt.sign(
-    { iss: passkitApiKeyId, sub: passkitApiKeyId, iat: now, exp: now + 3600 },
+    { uid: passkitApiKeyId, iat: now, exp: now + 3600 },
     passkitApiKeySecret,
-    { algorithm: 'HS256', header: { alg: 'HS256', typ: 'JWT', kid: passkitApiKeyId } }
+    { algorithm: 'HS256', header: { alg: 'HS256', typ: 'JWT' } }
   );
-  const authHeader = `Bearer ${token}`;
+  const authHeader = token;
 
-  // 会員作成 (2秒タイムアウト — Vercel Hobby 10秒制限対策)
+  // 会員作成 (5秒タイムアウト — Vercel Hobby 10秒制限対策)
   const apiUrl = `${passkitBaseUrl}/members/member`;
   console.log(`[PASSKIT] Creating member: ${apiUrl}`);
 
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 2000);
+  const timeout = setTimeout(() => controller.abort(), 5000);
 
   try {
     const response = await fetch(apiUrl, {
