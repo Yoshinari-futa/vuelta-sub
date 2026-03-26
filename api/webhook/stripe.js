@@ -101,29 +101,11 @@ async function generatePassKitCard({ email, name, customerId, tierId }) {
     const member = JSON.parse(responseText);
     console.log(`[PASSKIT] Member created: ${member.id}`);
 
-    // パスURL取得
-    const passUrl = `${passkitBaseUrl}/members/member/${member.id}/pass`;
-    console.log(`[PASSKIT] Getting pass URL: ${passUrl}`);
-
-    const passResponse = await fetch(passUrl, {
-      method: 'GET',
-      headers: { 'Authorization': authHeader },
-    });
-
-    const passText = await passResponse.text();
-    console.log(`[PASSKIT] Pass response: ${passResponse.status} - ${passText.substring(0, 300)}`);
-
-    if (!passResponse.ok) {
-      throw new Error(`PassKit Pass API error: ${passResponse.status} - ${passText.substring(0, 300)}`);
-    }
-
-    const passData = JSON.parse(passText);
-    const walletUrl = passData.downloadUrl || passData.appleWalletUrl || passData.googleWalletUrl || passData.url || passData.passUrl;
-
-    if (!walletUrl) {
-      console.log(`[PASSKIT] Full pass response keys: ${Object.keys(passData).join(', ')}`);
-      throw new Error('PassKit did not return a download URL');
-    }
+    // パスURL構築（PassKitはIDから直接URLを生成）
+    // pub2リージョンの場合: https://pub2.pskt.io/{memberId}
+    const region = (process.env.PASSKIT_HOST || 'api.pub2.passkit.io').includes('pub1') ? 'pub1' : 'pub2';
+    const walletUrl = `https://${region}.pskt.io/${member.id}`;
+    console.log(`[PASSKIT] Wallet URL: ${walletUrl}`);
 
     return walletUrl;
   } catch (err) {
