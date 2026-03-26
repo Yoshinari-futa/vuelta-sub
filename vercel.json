@@ -4,6 +4,10 @@
     {
       "src": "api/**/*.js",
       "use": "@vercel/node"
+    },
+    {
+      "src": "public/**",
+      "use": "@vercel/static"
     }
   ],
   "routes": [
@@ -18,6 +22,14 @@
     {
       "src": "/test-email",
       "dest": "/api/test-email.js"
+    },
+    {
+      "src": "/test-passkit",
+      "dest": "/api/test-passkit.js"
+    },
+    {
+      "src": "/thanks",
+      "dest": "/public/thanks.html"
     }
   ]
 }
