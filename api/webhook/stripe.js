@@ -187,21 +187,14 @@ module.exports = async function handler(req, res) {
     console.log(`[WEBHOOK] Session: customer=${session.customer}, email=${session.customer_email || session.customer_details?.email || 'none'}`);
 
     try {
-      if (!session.customer) {
-        console.error('[WEBHOOK] ERROR: No customer ID in session');
-        return res.status(400).json({ error: 'No customer ID' });
-      }
-
-      // 顧客情報取得
-      console.log(`[STRIPE] Retrieving customer: ${session.customer}`);
-      const customer = await stripe.customers.retrieve(session.customer);
-      const customerEmail = customer.email || session.customer_email || session.customer_details?.email;
-      const customerName = customer.name || session.customer_details?.name || 'VUELTA Member';
-      console.log(`[STRIPE] Customer: name=${customerName}, email=${customerEmail}`);
+      // セッションから直接メール・名前を取得（外部API呼び出し不要）
+      const customerEmail = session.customer_email || session.customer_details?.email;
+      const customerName = session.customer_details?.name || 'VUELTA Member';
+      console.log(`[WEBHOOK] Customer: name=${customerName}, email=${customerEmail}, stripeId=${session.customer}`);
 
       if (!customerEmail) {
-        console.error('[WEBHOOK] ERROR: No email found for customer');
-        return res.status(400).json({ error: 'No email found' });
+        console.error('[WEBHOOK] ERROR: No email found in session data');
+        return res.status(200).json({ received: true, warning: 'No email found' });
       }
 
       // PassKit会員証生成（失敗しても続行）
@@ -210,7 +203,7 @@ module.exports = async function handler(req, res) {
         walletUrl = await generatePassKitCard({
           email: customerEmail,
           name: customerName,
-          customerId: session.customer,
+          customerId: session.customer || session.id,
           tierId: process.env.PASSKIT_TIER_ID,
         });
         console.log(`[PASSKIT] SUCCESS: ${walletUrl}`);
