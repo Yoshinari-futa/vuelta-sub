@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Welcome | VUELTA FIRST-DRINK PASS</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Helvetica Neue', sans-serif;
+            background: #0a0a0a;
+            color: #e0e0e0;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 40px 20px;
+        }
+        .container {
+            max-width: 480px;
+            width: 100%;
+            text-align: center;
+        }
+        .logo {
+            font-size: 32px;
+            letter-spacing: 12px;
+            color: #fff;
+            margin-bottom: 48px;
+            font-weight: 300;
+        }
+        .check-icon {
+            width: 64px;
+            height: 64px;
+            border: 2px solid #4ade80;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0 auto 32px;
+        }
+        .check-icon svg {
+            width: 32px;
+            height: 32px;
+            stroke: #4ade80;
+        }
+        h1 {
+            font-size: 24px;
+            font-weight: 400;
+            color: #fff;
+            margin-bottom: 16px;
+            letter-spacing: 2px;
+        }
+        .subtitle {
+            font-size: 15px;
+            color: #999;
+            line-height: 1.8;
+            margin-bottom: 40px;
+        }
+        .card {
+            background: #161616;
+            border: 1px solid #2a2a2a;
+            border-radius: 12px;
+            padding: 28px 24px;
+            margin-bottom: 32px;
+            text-align: left;
+        }
+        .card-title {
+            font-size: 13px;
+            color: #666;
+            letter-spacing: 3px;
+            text-transform: uppercase;
+            margin-bottom: 16px;
+        }
+        .card-step {
+            display: flex;
+            align-items: flex-start;
+            gap: 12px;
+            margin-bottom: 16px;
+        }
+        .card-step:last-child { margin-bottom: 0; }
+        .step-num {
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            background: #222;
+            color: #888;
+            font-size: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+            margin-top: 2px;
+        }
+        .step-text {
+            font-size: 14px;
+            color: #ccc;
+            line-height: 1.6;
+        }
+        .wallet-btn {
+            display: inline-block;
+            padding: 16px 40px;
+            background: #fff;
+            color: #0a0a0a;
+            text-decoration: none;
+            font-weight: 600;
+            font-size: 14px;
+            letter-spacing: 2px;
+            border-radius: 8px;
+            transition: all 0.2s;
+            margin-bottom: 12px;
+        }
+        .wallet-btn:hover {
+            background: #e0e0e0;
+            transform: translateY(-1px);
+        }
+        .wallet-note {
+            font-size: 12px;
+            color: #666;
+            margin-top: 8px;
+        }
+        .hidden { display: none; }
+        .footer {
+            margin-top: 48px;
+            padding-top: 24px;
+            border-top: 1px solid #1a1a1a;
+            text-align: center;
+        }
+        .footer-tagline {
+            font-size: 12px;
+            color: #444;
+            letter-spacing: 1px;
+            margin-bottom: 8px;
+        }
+        .footer-address {
+            font-size: 11px;
+            color: #333;
+        }
+        .footer-links {
+            margin-top: 12px;
+        }
+        .footer-links a {
+            color: #555;
+            text-decoration: none;
+            font-size: 12px;
+            margin: 0 8px;
+        }
+        .footer-links a:hover { color: #888; }
+        .email-note {
+            background: #111;
+            border: 1px solid #222;
+            border-radius: 8px;
+            padding: 16px;
+            margin-bottom: 32px;
+            font-size: 13px;
+            color: #888;
+            line-height: 1.6;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="logo">VUELTA</div>
+        <div class="check-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="20 6 9 17 4 12"></polyline>
+            </svg>
+        </div>
+        <h1>Thank you</h1>
+        <p class="subtitle">
+            FIRST-DRINK PASS へようこそ。<br>
+            来店ごとに最初の一杯が無料になります。
+        </p>
+        <div class="email-note">
+            ご登録のメールアドレスに会員証（Walletパス）を<br>お送りしました。メールをご確認ください。
+        </div>
+        <div class="card">
+            <div class="card-title">ご利用方法</div>
+            <div class="card-step">
+                <span class="step-num">1</span>
+                <span class="step-text">メールの「ADD TO WALLET」ボタンから会員証をスマホに保存</span>
+            </div>
+            <div class="card-step">
+                <span class="step-num">2</span>
+                <span class="step-text">来店時にバーテンダーに会員証のQRコードを提示</span>
+            </div>
+            <div class="card-step">
+                <span class="step-num">3</span>
+                <span class="step-text">最初の一杯が無料！お好きなドリンクをお選びください</span>
+            </div>
+        </div>
+        <div id="wallet-section" class="hidden">
+            <a href="#" id="wallet-link" class="wallet-btn">ADD TO WALLET</a>
+            <p class="wallet-note">上のボタンからも追加できます</p>
+        </div>
+        <div class="footer">
+            <p class="footer-tagline">VUELTA — Where welcome back meets nice to meet you.</p>
+            <p class="footer-address">広島市中区大手町3-3-5 掛江ビル2F</p>
+            <div class="footer-links">
+                <a href="https://www.instagram.com/vuelta_bar" target="_blank">Instagram</a>
+                <span style="color:#333">·</span>
+                <a href="https://www.vuelta.jp/" target="_blank">Website</a>
+            </div>
+        </div>
+    </div>
+    <script>
+        const params = new URLSearchParams(window.location.search);
+        const walletUrl = params.get('wallet_url');
+        if (walletUrl) {
+            document.getElementById('wallet-section').classList.remove('hidden');
+            document.getElementById('wallet-link').href = decodeURIComponent(walletUrl);
+        }
+    </script>
+</body>
+</html>
