@@ -14,6 +14,10 @@
     {
       "src": "/health",
       "dest": "/api/health.js"
+    },
+    {
+      "src": "/test-email",
+      "dest": "/api/test-email.js"
     }
   ]
 }
