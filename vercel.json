@@ -28,6 +28,10 @@
       "dest": "/api/test-passkit.js"
     },
     {
+      "src": "/set-geofence",
+      "dest": "/api/set-geofence.js"
+    },
+    {
       "src": "/thanks",
       "dest": "/public/thanks.html"
     }
