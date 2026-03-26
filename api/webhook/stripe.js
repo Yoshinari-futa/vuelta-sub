@@ -68,12 +68,12 @@ async function generatePassKitCard({ email, name, customerId, tierId }) {
   );
   const authHeader = `Bearer ${token}`;
 
-  // 会員作成 (5秒タイムアウト)
+  // 会員作成 (2秒タイムアウト — Vercel Hobby 10秒制限対策)
   const apiUrl = `${passkitBaseUrl}/members/member`;
   console.log(`[PASSKIT] Creating member: ${apiUrl}`);
 
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 5000);
+  const timeout = setTimeout(() => controller.abort(), 2000);
 
   try {
     const response = await fetch(apiUrl, {
