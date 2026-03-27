@@ -9,147 +9,151 @@
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
             font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-            background: #050505;
-            color: #e8e8e8;
+            background: #ffffff;
+            color: #1a1a1a;
             min-height: 100vh;
             display: flex;
             align-items: center;
             justify-content: center;
-            padding: 40px 20px;
-            overflow-x: hidden;
+            padding: 48px 20px;
         }
-        body::before {
-            content: '';
-            position: fixed;
-            top: 0; left: 0; right: 0; bottom: 0;
-            background: radial-gradient(ellipse at 50% 0%, rgba(74,222,128,0.03) 0%, transparent 60%);
-            pointer-events: none;
-            z-index: 0;
-        }
-        .page { max-width: 420px; width: 100%; position: relative; z-index: 1; }
-        .brand { text-align: center; margin-bottom: 56px; }
-        .brand-name {
-            font-size: 13px; font-weight: 500; letter-spacing: 0.35em;
-            color: rgba(255,255,255,0.4); text-transform: uppercase;
-        }
-        .success-icon { width: 56px; height: 56px; margin: 0 auto 32px; position: relative; }
-        .success-icon::before {
-            content: ''; position: absolute; inset: -8px; border-radius: 50%;
-            background: rgba(74,222,128,0.06); animation: pulse 2.5s ease-in-out infinite;
-        }
+        .page { max-width: 400px; width: 100%; }
+
+        /* Logo */
+        .brand { text-align: center; margin-bottom: 48px; }
+        .brand img { height: 32px; width: auto; }
+
+        /* Success */
+        .success { text-align: center; margin-bottom: 36px; }
         .success-circle {
-            width: 56px; height: 56px; border-radius: 50%;
-            border: 1.5px solid rgba(74,222,128,0.5);
-            display: flex; align-items: center; justify-content: center;
-            position: relative; background: rgba(74,222,128,0.04);
+            width: 52px; height: 52px; border-radius: 50%;
+            border: 2px solid #1a1a1a;
+            display: inline-flex; align-items: center; justify-content: center;
+            margin-bottom: 28px;
         }
         .success-circle svg {
-            width: 24px; height: 24px; stroke: #4ade80;
+            width: 22px; height: 22px; stroke: #1a1a1a;
             stroke-width: 2.5; fill: none; stroke-linecap: round; stroke-linejoin: round;
         }
-        .content { text-align: center; margin-bottom: 40px; }
         .title {
-            font-size: 22px; font-weight: 500; color: #fff;
-            letter-spacing: -0.01em; margin-bottom: 12px; line-height: 1.3;
+            font-size: 20px; font-weight: 500; color: #0a0a0a;
+            letter-spacing: 0.02em; margin-bottom: 10px;
         }
-        .desc { font-size: 14px; color: rgba(255,255,255,0.45); line-height: 1.7; }
+        .desc {
+            font-size: 13px; color: #888; line-height: 1.8;
+        }
+
+        /* Divider */
+        .divider { height: 1px; background: #eee; margin: 32px 0; }
+
+        /* Notice */
         .notice {
             display: flex; align-items: flex-start; gap: 14px;
-            background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.06);
-            border-radius: 12px; padding: 20px; margin-bottom: 24px;
+            background: #f8f8f8; border-radius: 10px;
+            padding: 18px; margin-bottom: 20px;
         }
         .notice-icon {
-            width: 36px; height: 36px; border-radius: 10px;
-            background: rgba(74,222,128,0.08);
-            display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+            width: 34px; height: 34px; border-radius: 8px;
+            background: #1a1a1a;
+            display: flex; align-items: center; justify-content: center;
+            flex-shrink: 0;
         }
-        .notice-icon svg { width: 18px; height: 18px; stroke: #4ade80; stroke-width: 1.8; fill: none; }
-        .notice-title { font-size: 13px; font-weight: 500; color: rgba(255,255,255,0.85); margin-bottom: 4px; }
-        .notice-text { font-size: 12.5px; color: rgba(255,255,255,0.4); line-height: 1.6; }
+        .notice-icon svg {
+            width: 16px; height: 16px; stroke: #fff; stroke-width: 1.8; fill: none;
+        }
+        .notice-title {
+            font-size: 13px; font-weight: 600; color: #1a1a1a; margin-bottom: 3px;
+        }
+        .notice-text { font-size: 12px; color: #999; line-height: 1.6; }
+
+        /* Steps */
         .steps {
-            background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.06);
-            border-radius: 12px; padding: 24px; margin-bottom: 32px;
+            border: 1px solid #eee; border-radius: 10px;
+            padding: 22px; margin-bottom: 28px;
         }
         .steps-label {
-            font-size: 10px; font-weight: 600; letter-spacing: 0.2em;
-            text-transform: uppercase; color: rgba(255,255,255,0.25); margin-bottom: 20px;
+            font-size: 10px; font-weight: 600; letter-spacing: 0.15em;
+            text-transform: uppercase; color: #bbb; margin-bottom: 18px;
         }
-        .step { display: flex; align-items: flex-start; gap: 14px; position: relative; }
-        .step + .step { margin-top: 18px; }
-        .step + .step::before {
-            content: ''; position: absolute; left: 11px; top: -14px;
-            width: 1px; height: 10px; background: rgba(255,255,255,0.06);
-        }
-        .step-dot {
-            width: 22px; height: 22px; border-radius: 50%;
-            border: 1px solid rgba(255,255,255,0.1);
+        .step { display: flex; align-items: flex-start; gap: 12px; }
+        .step + .step { margin-top: 14px; }
+        .step-num {
+            width: 20px; height: 20px; border-radius: 50%;
+            background: #0a0a0a; color: #fff;
+            font-size: 10px; font-weight: 600;
             display: flex; align-items: center; justify-content: center;
             flex-shrink: 0; margin-top: 1px;
         }
-        .step-dot span { font-size: 10px; font-weight: 600; color: rgba(255,255,255,0.3); }
-        .step-content { font-size: 13px; color: rgba(255,255,255,0.55); line-height: 1.6; }
-        .step-content strong { color: rgba(255,255,255,0.8); font-weight: 500; }
-        .wallet-section { text-align: center; margin-bottom: 40px; }
+        .step-text {
+            font-size: 13px; color: #555; line-height: 1.5;
+        }
+        .step-text strong { color: #1a1a1a; font-weight: 600; }
+
+        /* Wallet */
+        .wallet-section { text-align: center; margin-bottom: 36px; }
         .wallet-btn {
             display: inline-flex; align-items: center; gap: 8px;
-            padding: 14px 32px; background: #fff; color: #050505;
+            padding: 13px 30px; background: #0a0a0a; color: #fff;
             text-decoration: none; font-weight: 600; font-size: 13px;
-            letter-spacing: 0.08em; border-radius: 100px;
-            transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+            letter-spacing: 0.06em; border-radius: 100px;
+            transition: all 0.2s ease;
         }
-        .wallet-btn:hover {
-            background: #e8e8e8; transform: translateY(-1px);
-            box-shadow: 0 8px 24px rgba(0,0,0,0.4);
-        }
-        .wallet-btn svg { width: 16px; height: 16px; transition: transform 0.25s ease; }
-        .wallet-btn:hover svg { transform: translateX(2px); }
-        .wallet-sub { font-size: 11px; color: rgba(255,255,255,0.25); margin-top: 10px; }
+        .wallet-btn:hover { background: #2d5a3d; transform: translateY(-1px); }
+        .wallet-btn svg { width: 14px; height: 14px; }
+        .wallet-sub { font-size: 11px; color: #bbb; margin-top: 8px; }
         .hidden { display: none; }
-        .footer {
-            text-align: center; padding-top: 32px;
-            border-top: 1px solid rgba(255,255,255,0.04);
+
+        /* Green accent bar */
+        .accent-bar {
+            width: 40px; height: 3px; background: #2d5a3d;
+            margin: 0 auto 28px; border-radius: 2px;
         }
+
+        /* Footer */
+        .footer { text-align: center; padding-top: 28px; border-top: 1px solid #eee; }
         .footer-tagline {
-            font-size: 11px; color: rgba(255,255,255,0.2);
-            letter-spacing: 0.02em; font-style: italic; margin-bottom: 8px;
+            font-size: 11px; color: #bbb; font-style: italic;
+            letter-spacing: 0.01em; margin-bottom: 6px;
         }
-        .footer-address { font-size: 11px; color: rgba(255,255,255,0.15); margin-bottom: 12px; }
+        .footer-address { font-size: 11px; color: #ccc; margin-bottom: 10px; }
         .footer-links a {
-            color: rgba(255,255,255,0.25); text-decoration: none;
-            font-size: 11px; letter-spacing: 0.05em; transition: color 0.2s;
+            color: #999; text-decoration: none; font-size: 11px;
+            letter-spacing: 0.03em; transition: color 0.2s;
         }
-        .footer-links a:hover { color: rgba(255,255,255,0.5); }
-        .footer-links span { color: rgba(255,255,255,0.1); margin: 0 10px; }
-        @keyframes pulse {
-            0%, 100% { transform: scale(1); opacity: 1; }
-            50% { transform: scale(1.15); opacity: 0.5; }
-        }
+        .footer-links a:hover { color: #2d5a3d; }
+        .footer-links span { color: #ddd; margin: 0 8px; }
+
+        /* Animations */
         @keyframes fadeUp {
-            from { opacity: 0; transform: translateY(16px); }
+            from { opacity: 0; transform: translateY(12px); }
             to { opacity: 1; transform: translateY(0); }
         }
-        .brand { animation: fadeUp 0.6s ease-out; }
-        .success-icon { animation: fadeUp 0.6s ease-out 0.1s both; }
-        .content { animation: fadeUp 0.6s ease-out 0.2s both; }
-        .notice { animation: fadeUp 0.6s ease-out 0.3s both; }
-        .steps { animation: fadeUp 0.6s ease-out 0.4s both; }
-        .wallet-section { animation: fadeUp 0.6s ease-out 0.5s both; }
-        .footer { animation: fadeUp 0.6s ease-out 0.6s both; }
-        @media (prefers-reduced-motion: reduce) { *, *::before { animation: none !important; } }
+        .brand { animation: fadeUp 0.5s ease-out; }
+        .success { animation: fadeUp 0.5s ease-out 0.1s both; }
+        .notice { animation: fadeUp 0.5s ease-out 0.2s both; }
+        .steps { animation: fadeUp 0.5s ease-out 0.3s both; }
+        .wallet-section { animation: fadeUp 0.5s ease-out 0.4s both; }
+        .footer { animation: fadeUp 0.5s ease-out 0.5s both; }
+        @media (prefers-reduced-motion: reduce) { * { animation: none !important; } }
     </style>
 </head>
 <body>
     <div class="page">
-        <div class="brand"><div class="brand-name">VUELTA</div></div>
-        <div class="success-icon">
+        <div class="brand">
+            <img src="https://vuelta.jp/images/vuelta-logo.png" alt="VUELTA">
+        </div>
+
+        <div class="success">
             <div class="success-circle">
                 <svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"></polyline></svg>
             </div>
-        </div>
-        <div class="content">
+            <div class="accent-bar"></div>
             <h1 class="title">Welcome to FIRST-DRINK PASS</h1>
             <p class="desc">ご登録ありがとうございます。<br>来店ごとに最初の一杯が無料になります。</p>
         </div>
+
+        <div class="divider"></div>
+
         <div class="notice">
             <div class="notice-icon">
                 <svg viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round">
@@ -157,33 +161,36 @@
                     <path d="M22 4L12 13L2 4"></path>
                 </svg>
             </div>
-            <div class="notice-body">
+            <div>
                 <div class="notice-title">メールを確認してください</div>
                 <div class="notice-text">会員証（Walletパス）のリンクを<br>ご登録のメールアドレスに送信しました。</div>
             </div>
         </div>
+
         <div class="steps">
             <div class="steps-label">How to use</div>
             <div class="step">
-                <div class="step-dot"><span>1</span></div>
-                <div class="step-content">メールの <strong>ADD TO WALLET</strong> から<br>会員証をスマホに保存</div>
+                <div class="step-num">1</div>
+                <div class="step-text">メールの <strong>ADD TO WALLET</strong> から会員証をスマホに保存</div>
             </div>
             <div class="step">
-                <div class="step-dot"><span>2</span></div>
-                <div class="step-content">来店時に <strong>QRコード</strong> を<br>バーテンダーに提示</div>
+                <div class="step-num">2</div>
+                <div class="step-text">来店時に <strong>QRコード</strong> をバーテンダーに提示</div>
             </div>
             <div class="step">
-                <div class="step-dot"><span>3</span></div>
-                <div class="step-content">最初の一杯が <strong>無料</strong></div>
+                <div class="step-num">3</div>
+                <div class="step-text">最初の一杯が <strong>無料</strong></div>
             </div>
         </div>
+
         <div id="wallet-section" class="wallet-section hidden">
             <a href="#" id="wallet-link" class="wallet-btn">
                 ADD TO WALLET
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
             </a>
             <p class="wallet-sub">メールからも追加できます</p>
         </div>
+
         <div class="footer">
             <p class="footer-tagline">Where welcome back meets nice to meet you.</p>
             <p class="footer-address">広島市中区大手町3-3-5 掛江ビル2F</p>
@@ -194,6 +201,7 @@
             </div>
         </div>
     </div>
+
     <script>
         const params = new URLSearchParams(window.location.search);
         const walletUrl = params.get('wallet_url');
