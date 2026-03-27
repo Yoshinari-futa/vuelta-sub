@@ -234,6 +234,66 @@ async function sendMembershipEmail(transporter, email, name, walletUrl) {
   });
 }
 
+// Slack通知送信
+async function sendSlackNotification({ name, email, walletUrl }) {
+  const webhookUrl = process.env.SLACK_WEBHOOK_URL;
+  if (!webhookUrl) {
+    console.log('[SLACK] Skipped: SLACK_WEBHOOK_URL not set');
+    return;
+  }
+
+  const now = new Date();
+  const jst = new Date(now.getTime() + 9 * 60 * 60 * 1000);
+  const timeStr = `${jst.getMonth() + 1}/${jst.getDate()} ${String(jst.getHours()).padStart(2, '0')}:${String(jst.getMinutes()).padStart(2, '0')}`;
+
+  const walletStatus = walletUrl ? '✅ Wallet発行済' : '⏳ Wallet未発行（証明書未設定）';
+
+  const payload = {
+    blocks: [
+      {
+        type: 'header',
+        text: { type: 'plain_text', text: '🎉 新規 FIRST-DRINK PASS 会員', emoji: true }
+      },
+      {
+        type: 'section',
+        fields: [
+          { type: 'mrkdwn', text: `*氏名*\n${name}` },
+          { type: 'mrkdwn', text: `*メール*\n${email}` },
+        ]
+      },
+      {
+        type: 'section',
+        fields: [
+          { type: 'mrkdwn', text: `*Wallet*\n${walletStatus}` },
+          { type: 'mrkdwn', text: `*登録日時*\n${timeStr}` },
+        ]
+      },
+      {
+        type: 'context',
+        elements: [
+          { type: 'mrkdwn', text: 'Stripe → FIRST-DRINK PASS サブスクリプション ¥1,980/月' }
+        ]
+      }
+    ]
+  };
+
+  try {
+    const response = await fetch(webhookUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    if (response.ok) {
+      console.log('[SLACK] SUCCESS: notification sent');
+    } else {
+      const text = await response.text();
+      console.error(`[SLACK] FAILED: ${response.status} - ${text}`);
+    }
+  } catch (err) {
+    console.error(`[SLACK] FAILED: ${err.message}`);
+  }
+}
+
 // メインハンドラー
 module.exports = async function handler(req, res) {
   if (req.method !== 'POST') {
@@ -295,6 +355,13 @@ module.exports = async function handler(req, res) {
         }
       } else {
         console.error('[EMAIL] FAILED: No transporter (missing EMAIL_USER or EMAIL_PASS)');
+      }
+
+      // Slack通知（メール送信とは独立して実行）
+      try {
+        await sendSlackNotification({ name: customerName, email: customerEmail, walletUrl });
+      } catch (err) {
+        console.error(`[SLACK] FAILED: ${err.message}`);
       }
 
     } catch (err) {
