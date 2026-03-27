@@ -116,30 +116,100 @@ async function generatePassKitCard({ email, name, customerId, tierId }) {
 
 // ウェルカムメール送信（walletUrl有無で内容を分岐）
 async function sendMembershipEmail(transporter, email, name, walletUrl) {
-  const walletSection = walletUrl
-    ? `<p>下のボタンからスマートフォンの Wallet に会員証を追加してください。<br>来店時に QR を見せるだけで、最初の一杯が無料になります。</p>
-       <p style="text-align:center"><a href="${walletUrl}" style="display:inline-block;padding:14px 32px;background:#fff;color:#0a0a0a;text-decoration:none;font-weight:600;letter-spacing:2px;margin:24px 0;">ADD TO WALLET</a></p>
-       <p style="word-break:break-all;color:#666;font-size:12px">${walletUrl}</p>`
-    : `<p>会員証の準備ができ次第、別途メールでお送りいたします。<br>来店時にお名前をお伝えいただければ、最初の一杯が無料になります。</p>`;
+  const walletButton = walletUrl
+    ? `<tr><td align="center" style="padding:32px 0 16px;">
+          <a href="${walletUrl}" style="display:inline-block;padding:14px 40px;background:#ffffff;color:#050505;text-decoration:none;font-weight:600;font-size:13px;letter-spacing:0.08em;border-radius:50px;mso-padding-alt:0;">ADD TO WALLET &rarr;</a>
+        </td></tr>
+        <tr><td align="center" style="padding:0 0 8px;">
+          <span style="font-size:11px;color:rgba(255,255,255,0.25);">タップしてスマホのWalletに保存</span>
+        </td></tr>`
+    : `<tr><td style="padding:24px 0;">
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06);border-radius:12px;">
+            <tr><td style="padding:20px 24px;">
+              <span style="font-size:13px;color:rgba(255,255,255,0.6);line-height:1.7;">会員証の準備ができ次第、別途メールでお送りいたします。来店時にお名前をお伝えいただければ、最初の一杯が無料になります。</span>
+            </td></tr>
+          </table>
+        </td></tr>`;
 
   await transporter.sendMail({
     from: process.env.EMAIL_FROM || 'noreply@vuelta.jp',
     to: email,
-    subject: 'VUELTA FIRST-DRINK PASS — Welcome',
+    subject: 'VUELTA — Welcome to FIRST-DRINK PASS',
     html: `<!DOCTYPE html>
 <html>
-<head><meta charset="UTF-8"></head>
-<body style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#0a0a0a;color:#e0e0e0;margin:0;padding:0;">
-  <div style="max-width:600px;margin:0 auto;padding:40px 20px;">
-    <div style="text-align:center;font-size:28px;letter-spacing:8px;margin-bottom:40px;color:#fff;">VUELTA</div>
-    <p>${name} 様</p>
-    <p>FIRST-DRINK PASS へようこそ。</p>
-    ${walletSection}
-    <div style="margin-top:40px;padding-top:20px;border-top:1px solid #333;font-size:12px;color:#666;">
-      <p>VUELTA — Where welcome back meets nice to meet you.</p>
-      <p>広島市中区大手町3-3-5 掛江ビル2F</p>
-    </div>
-  </div>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+</head>
+<body style="margin:0;padding:0;background:#050505;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','Helvetica Neue',sans-serif;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#050505;">
+    <tr><td align="center" style="padding:56px 24px 48px;">
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:440px;">
+        <tr><td align="center" style="padding-bottom:48px;">
+          <span style="font-size:12px;font-weight:500;letter-spacing:0.35em;color:rgba(255,255,255,0.35);text-transform:uppercase;">VUELTA</span>
+        </td></tr>
+        <tr><td align="center" style="padding-bottom:12px;">
+          <span style="font-size:22px;font-weight:500;color:#ffffff;letter-spacing:-0.01em;">${name} 様</span>
+        </td></tr>
+        <tr><td align="center" style="padding-bottom:36px;">
+          <span style="font-size:14px;color:rgba(255,255,255,0.4);line-height:1.7;">FIRST-DRINK PASS へようこそ。<br>来店ごとに最初の一杯が無料になります。</span>
+        </td></tr>
+        <tr><td style="padding-bottom:32px;"><div style="height:1px;background:rgba(255,255,255,0.06);"></div></td></tr>
+        ${walletButton}
+        <tr><td style="padding-top:24px;padding-bottom:8px;"><div style="height:1px;background:rgba(255,255,255,0.06);"></div></td></tr>
+        <tr><td style="padding:24px 0;">
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.06);border-radius:12px;">
+            <tr><td style="padding:24px;">
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+                <tr><td style="padding-bottom:16px;">
+                  <span style="font-size:10px;font-weight:600;letter-spacing:0.2em;text-transform:uppercase;color:rgba(255,255,255,0.2);">HOW TO USE</span>
+                </td></tr>
+                <tr><td style="padding-bottom:14px;">
+                  <table role="presentation" cellpadding="0" cellspacing="0"><tr>
+                    <td style="width:28px;vertical-align:top;padding-top:2px;">
+                      <div style="width:20px;height:20px;border-radius:50%;border:1px solid rgba(255,255,255,0.1);text-align:center;line-height:20px;font-size:10px;font-weight:600;color:rgba(255,255,255,0.25);">1</div>
+                    </td>
+                    <td style="font-size:13px;color:rgba(255,255,255,0.5);line-height:1.6;">
+                      上のボタンから<span style="color:rgba(255,255,255,0.8);font-weight:500;">Walletに会員証を保存</span>
+                    </td>
+                  </tr></table>
+                </td></tr>
+                <tr><td style="padding-bottom:14px;">
+                  <table role="presentation" cellpadding="0" cellspacing="0"><tr>
+                    <td style="width:28px;vertical-align:top;padding-top:2px;">
+                      <div style="width:20px;height:20px;border-radius:50%;border:1px solid rgba(255,255,255,0.1);text-align:center;line-height:20px;font-size:10px;font-weight:600;color:rgba(255,255,255,0.25);">2</div>
+                    </td>
+                    <td style="font-size:13px;color:rgba(255,255,255,0.5);line-height:1.6;">
+                      来店時に<span style="color:rgba(255,255,255,0.8);font-weight:500;">QRコード</span>をバーテンダーに提示
+                    </td>
+                  </tr></table>
+                </td></tr>
+                <tr><td>
+                  <table role="presentation" cellpadding="0" cellspacing="0"><tr>
+                    <td style="width:28px;vertical-align:top;padding-top:2px;">
+                      <div style="width:20px;height:20px;border-radius:50%;border:1px solid rgba(255,255,255,0.1);text-align:center;line-height:20px;font-size:10px;font-weight:600;color:rgba(255,255,255,0.25);">3</div>
+                    </td>
+                    <td style="font-size:13px;color:rgba(255,255,255,0.5);line-height:1.6;">
+                      最初の一杯が<span style="color:rgba(255,255,255,0.8);font-weight:500;">無料</span>
+                    </td>
+                  </tr></table>
+                </td></tr>
+              </table>
+            </td></tr>
+          </table>
+        </td></tr>
+        <tr><td align="center" style="padding-top:24px;">
+          <p style="margin:0 0 6px;font-size:11px;color:rgba(255,255,255,0.15);font-style:italic;">Where welcome back meets nice to meet you.</p>
+          <p style="margin:0 0 10px;font-size:11px;color:rgba(255,255,255,0.12);">広島市中区大手町3-3-5 掛江ビル2F</p>
+          <p style="margin:0;">
+            <a href="https://www.instagram.com/vuelta_bar" style="color:rgba(255,255,255,0.2);text-decoration:none;font-size:11px;letter-spacing:0.05em;">Instagram</a>
+            <span style="color:rgba(255,255,255,0.08);margin:0 8px;">&middot;</span>
+            <a href="https://www.vuelta.jp/" style="color:rgba(255,255,255,0.2);text-decoration:none;font-size:11px;letter-spacing:0.05em;">Website</a>
+          </p>
+        </td></tr>
+      </table>
+    </td></tr>
+  </table>
 </body>
 </html>`,
   });

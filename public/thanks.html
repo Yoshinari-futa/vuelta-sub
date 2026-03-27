@@ -5,201 +5,192 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Welcome | VUELTA FIRST-DRINK PASS</title>
     <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap');
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Helvetica Neue', sans-serif;
-            background: #0a0a0a;
-            color: #e0e0e0;
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: #050505;
+            color: #e8e8e8;
             min-height: 100vh;
             display: flex;
-            flex-direction: column;
             align-items: center;
             justify-content: center;
             padding: 40px 20px;
+            overflow-x: hidden;
         }
-        .container {
-            max-width: 480px;
-            width: 100%;
-            text-align: center;
+        body::before {
+            content: '';
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: radial-gradient(ellipse at 50% 0%, rgba(74,222,128,0.03) 0%, transparent 60%);
+            pointer-events: none;
+            z-index: 0;
         }
-        .logo {
-            font-size: 32px;
-            letter-spacing: 12px;
-            color: #fff;
-            margin-bottom: 48px;
-            font-weight: 300;
+        .page { max-width: 420px; width: 100%; position: relative; z-index: 1; }
+        .brand { text-align: center; margin-bottom: 56px; }
+        .brand-name {
+            font-size: 13px; font-weight: 500; letter-spacing: 0.35em;
+            color: rgba(255,255,255,0.4); text-transform: uppercase;
         }
-        .check-icon {
-            width: 64px;
-            height: 64px;
-            border: 2px solid #4ade80;
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            margin: 0 auto 32px;
+        .success-icon { width: 56px; height: 56px; margin: 0 auto 32px; position: relative; }
+        .success-icon::before {
+            content: ''; position: absolute; inset: -8px; border-radius: 50%;
+            background: rgba(74,222,128,0.06); animation: pulse 2.5s ease-in-out infinite;
         }
-        .check-icon svg {
-            width: 32px;
-            height: 32px;
-            stroke: #4ade80;
+        .success-circle {
+            width: 56px; height: 56px; border-radius: 50%;
+            border: 1.5px solid rgba(74,222,128,0.5);
+            display: flex; align-items: center; justify-content: center;
+            position: relative; background: rgba(74,222,128,0.04);
         }
-        h1 {
-            font-size: 24px;
-            font-weight: 400;
-            color: #fff;
-            margin-bottom: 16px;
-            letter-spacing: 2px;
+        .success-circle svg {
+            width: 24px; height: 24px; stroke: #4ade80;
+            stroke-width: 2.5; fill: none; stroke-linecap: round; stroke-linejoin: round;
         }
-        .subtitle {
-            font-size: 15px;
-            color: #999;
-            line-height: 1.8;
-            margin-bottom: 40px;
+        .content { text-align: center; margin-bottom: 40px; }
+        .title {
+            font-size: 22px; font-weight: 500; color: #fff;
+            letter-spacing: -0.01em; margin-bottom: 12px; line-height: 1.3;
         }
-        .card {
-            background: #161616;
-            border: 1px solid #2a2a2a;
-            border-radius: 12px;
-            padding: 28px 24px;
-            margin-bottom: 32px;
-            text-align: left;
+        .desc { font-size: 14px; color: rgba(255,255,255,0.45); line-height: 1.7; }
+        .notice {
+            display: flex; align-items: flex-start; gap: 14px;
+            background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.06);
+            border-radius: 12px; padding: 20px; margin-bottom: 24px;
         }
-        .card-title {
-            font-size: 13px;
-            color: #666;
-            letter-spacing: 3px;
-            text-transform: uppercase;
-            margin-bottom: 16px;
+        .notice-icon {
+            width: 36px; height: 36px; border-radius: 10px;
+            background: rgba(74,222,128,0.08);
+            display: flex; align-items: center; justify-content: center; flex-shrink: 0;
         }
-        .card-step {
-            display: flex;
-            align-items: flex-start;
-            gap: 12px;
-            margin-bottom: 16px;
+        .notice-icon svg { width: 18px; height: 18px; stroke: #4ade80; stroke-width: 1.8; fill: none; }
+        .notice-title { font-size: 13px; font-weight: 500; color: rgba(255,255,255,0.85); margin-bottom: 4px; }
+        .notice-text { font-size: 12.5px; color: rgba(255,255,255,0.4); line-height: 1.6; }
+        .steps {
+            background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.06);
+            border-radius: 12px; padding: 24px; margin-bottom: 32px;
         }
-        .card-step:last-child { margin-bottom: 0; }
-        .step-num {
-            width: 24px;
-            height: 24px;
-            border-radius: 50%;
-            background: #222;
-            color: #888;
-            font-size: 12px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            flex-shrink: 0;
-            margin-top: 2px;
+        .steps-label {
+            font-size: 10px; font-weight: 600; letter-spacing: 0.2em;
+            text-transform: uppercase; color: rgba(255,255,255,0.25); margin-bottom: 20px;
         }
-        .step-text {
-            font-size: 14px;
-            color: #ccc;
-            line-height: 1.6;
+        .step { display: flex; align-items: flex-start; gap: 14px; position: relative; }
+        .step + .step { margin-top: 18px; }
+        .step + .step::before {
+            content: ''; position: absolute; left: 11px; top: -14px;
+            width: 1px; height: 10px; background: rgba(255,255,255,0.06);
         }
+        .step-dot {
+            width: 22px; height: 22px; border-radius: 50%;
+            border: 1px solid rgba(255,255,255,0.1);
+            display: flex; align-items: center; justify-content: center;
+            flex-shrink: 0; margin-top: 1px;
+        }
+        .step-dot span { font-size: 10px; font-weight: 600; color: rgba(255,255,255,0.3); }
+        .step-content { font-size: 13px; color: rgba(255,255,255,0.55); line-height: 1.6; }
+        .step-content strong { color: rgba(255,255,255,0.8); font-weight: 500; }
+        .wallet-section { text-align: center; margin-bottom: 40px; }
         .wallet-btn {
-            display: inline-block;
-            padding: 16px 40px;
-            background: #fff;
-            color: #0a0a0a;
-            text-decoration: none;
-            font-weight: 600;
-            font-size: 14px;
-            letter-spacing: 2px;
-            border-radius: 8px;
-            transition: all 0.2s;
-            margin-bottom: 12px;
+            display: inline-flex; align-items: center; gap: 8px;
+            padding: 14px 32px; background: #fff; color: #050505;
+            text-decoration: none; font-weight: 600; font-size: 13px;
+            letter-spacing: 0.08em; border-radius: 100px;
+            transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
         }
         .wallet-btn:hover {
-            background: #e0e0e0;
-            transform: translateY(-1px);
+            background: #e8e8e8; transform: translateY(-1px);
+            box-shadow: 0 8px 24px rgba(0,0,0,0.4);
         }
-        .wallet-note {
-            font-size: 12px;
-            color: #666;
-            margin-top: 8px;
-        }
+        .wallet-btn svg { width: 16px; height: 16px; transition: transform 0.25s ease; }
+        .wallet-btn:hover svg { transform: translateX(2px); }
+        .wallet-sub { font-size: 11px; color: rgba(255,255,255,0.25); margin-top: 10px; }
         .hidden { display: none; }
         .footer {
-            margin-top: 48px;
-            padding-top: 24px;
-            border-top: 1px solid #1a1a1a;
-            text-align: center;
+            text-align: center; padding-top: 32px;
+            border-top: 1px solid rgba(255,255,255,0.04);
         }
         .footer-tagline {
-            font-size: 12px;
-            color: #444;
-            letter-spacing: 1px;
-            margin-bottom: 8px;
+            font-size: 11px; color: rgba(255,255,255,0.2);
+            letter-spacing: 0.02em; font-style: italic; margin-bottom: 8px;
         }
-        .footer-address {
-            font-size: 11px;
-            color: #333;
-        }
-        .footer-links {
-            margin-top: 12px;
-        }
+        .footer-address { font-size: 11px; color: rgba(255,255,255,0.15); margin-bottom: 12px; }
         .footer-links a {
-            color: #555;
-            text-decoration: none;
-            font-size: 12px;
-            margin: 0 8px;
+            color: rgba(255,255,255,0.25); text-decoration: none;
+            font-size: 11px; letter-spacing: 0.05em; transition: color 0.2s;
         }
-        .footer-links a:hover { color: #888; }
-        .email-note {
-            background: #111;
-            border: 1px solid #222;
-            border-radius: 8px;
-            padding: 16px;
-            margin-bottom: 32px;
-            font-size: 13px;
-            color: #888;
-            line-height: 1.6;
+        .footer-links a:hover { color: rgba(255,255,255,0.5); }
+        .footer-links span { color: rgba(255,255,255,0.1); margin: 0 10px; }
+        @keyframes pulse {
+            0%, 100% { transform: scale(1); opacity: 1; }
+            50% { transform: scale(1.15); opacity: 0.5; }
         }
+        @keyframes fadeUp {
+            from { opacity: 0; transform: translateY(16px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .brand { animation: fadeUp 0.6s ease-out; }
+        .success-icon { animation: fadeUp 0.6s ease-out 0.1s both; }
+        .content { animation: fadeUp 0.6s ease-out 0.2s both; }
+        .notice { animation: fadeUp 0.6s ease-out 0.3s both; }
+        .steps { animation: fadeUp 0.6s ease-out 0.4s both; }
+        .wallet-section { animation: fadeUp 0.6s ease-out 0.5s both; }
+        .footer { animation: fadeUp 0.6s ease-out 0.6s both; }
+        @media (prefers-reduced-motion: reduce) { *, *::before { animation: none !important; } }
     </style>
 </head>
 <body>
-    <div class="container">
-        <div class="logo">VUELTA</div>
-        <div class="check-icon">
-            <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <polyline points="20 6 9 17 4 12"></polyline>
-            </svg>
-        </div>
-        <h1>Thank you</h1>
-        <p class="subtitle">
-            FIRST-DRINK PASS へようこそ。<br>
-            来店ごとに最初の一杯が無料になります。
-        </p>
-        <div class="email-note">
-            ご登録のメールアドレスに会員証（Walletパス）を<br>お送りしました。メールをご確認ください。
-        </div>
-        <div class="card">
-            <div class="card-title">ご利用方法</div>
-            <div class="card-step">
-                <span class="step-num">1</span>
-                <span class="step-text">メールの「ADD TO WALLET」ボタンから会員証をスマホに保存</span>
-            </div>
-            <div class="card-step">
-                <span class="step-num">2</span>
-                <span class="step-text">来店時にバーテンダーに会員証のQRコードを提示</span>
-            </div>
-            <div class="card-step">
-                <span class="step-num">3</span>
-                <span class="step-text">最初の一杯が無料！お好きなドリンクをお選びください</span>
+    <div class="page">
+        <div class="brand"><div class="brand-name">VUELTA</div></div>
+        <div class="success-icon">
+            <div class="success-circle">
+                <svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"></polyline></svg>
             </div>
         </div>
-        <div id="wallet-section" class="hidden">
-            <a href="#" id="wallet-link" class="wallet-btn">ADD TO WALLET</a>
-            <p class="wallet-note">上のボタンからも追加できます</p>
+        <div class="content">
+            <h1 class="title">Welcome to FIRST-DRINK PASS</h1>
+            <p class="desc">ご登録ありがとうございます。<br>来店ごとに最初の一杯が無料になります。</p>
+        </div>
+        <div class="notice">
+            <div class="notice-icon">
+                <svg viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round">
+                    <rect x="2" y="4" width="20" height="16" rx="2"></rect>
+                    <path d="M22 4L12 13L2 4"></path>
+                </svg>
+            </div>
+            <div class="notice-body">
+                <div class="notice-title">メールを確認してください</div>
+                <div class="notice-text">会員証（Walletパス）のリンクを<br>ご登録のメールアドレスに送信しました。</div>
+            </div>
+        </div>
+        <div class="steps">
+            <div class="steps-label">How to use</div>
+            <div class="step">
+                <div class="step-dot"><span>1</span></div>
+                <div class="step-content">メールの <strong>ADD TO WALLET</strong> から<br>会員証をスマホに保存</div>
+            </div>
+            <div class="step">
+                <div class="step-dot"><span>2</span></div>
+                <div class="step-content">来店時に <strong>QRコード</strong> を<br>バーテンダーに提示</div>
+            </div>
+            <div class="step">
+                <div class="step-dot"><span>3</span></div>
+                <div class="step-content">最初の一杯が <strong>無料</strong></div>
+            </div>
+        </div>
+        <div id="wallet-section" class="wallet-section hidden">
+            <a href="#" id="wallet-link" class="wallet-btn">
+                ADD TO WALLET
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+            </a>
+            <p class="wallet-sub">メールからも追加できます</p>
         </div>
         <div class="footer">
-            <p class="footer-tagline">VUELTA — Where welcome back meets nice to meet you.</p>
+            <p class="footer-tagline">Where welcome back meets nice to meet you.</p>
             <p class="footer-address">広島市中区大手町3-3-5 掛江ビル2F</p>
             <div class="footer-links">
-                <a href="https://www.instagram.com/vuelta_bar" target="_blank">Instagram</a>
-                <span style="color:#333">·</span>
-                <a href="https://www.vuelta.jp/" target="_blank">Website</a>
+                <a href="https://www.instagram.com/vuelta_bar" target="_blank" rel="noopener">Instagram</a>
+                <span>&middot;</span>
+                <a href="https://www.vuelta.jp/" target="_blank" rel="noopener">Website</a>
             </div>
         </div>
     </div>
