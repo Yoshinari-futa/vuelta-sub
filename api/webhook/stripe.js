@@ -131,6 +131,10 @@ async function sendMembershipEmail(transporter, email, name, walletUrl) {
           </table>
         </td></tr>`;
 
+  const step1Text = walletUrl
+    ? '上のボタンから<span style="color:#1a1a1a;font-weight:600;">Walletに会員証を保存</span>'
+    : 'メールに届く<span style="color:#1a1a1a;font-weight:600;">リンクからWalletに会員証を保存</span>';
+
   await transporter.sendMail({
     from: process.env.EMAIL_FROM || 'noreply@vuelta.jp',
     to: email,
@@ -182,7 +186,7 @@ async function sendMembershipEmail(transporter, email, name, walletUrl) {
                           <div style="width:20px;height:20px;border-radius:50%;background:#0a0a0a;text-align:center;line-height:20px;font-size:10px;font-weight:600;color:#fff;">1</div>
                         </td>
                         <td style="font-size:13px;color:#666;line-height:1.5;">
-                          上のボタンから<span style="color:#1a1a1a;font-weight:600;">Walletに会員証を保存</span>
+                          ${step1Text}
                         </td>
                       </tr></table>
                     </td></tr>
