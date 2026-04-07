@@ -121,16 +121,27 @@ module.exports = async function handler(req, res) {
         const walletUrl = `https://${region}.pskt.io/${member.id}`;
         steps.push({ step: 'SUCCESS', memberId: member.id, walletUrl });
 
-        // テストメンバーを削除（memberIdで削除）
-        try {
-          const delRes = await fetch(`${passkitHost}/members/member/${member.id}`, {
-            method: 'DELETE',
-            headers: { 'Authorization': token },
-          });
-          const delText = await delRes.text();
-          steps.push({ step: 'cleanup', deleted: delRes.ok, status: delRes.status, body: delText.substring(0, 200) });
-        } catch (e) {
-          steps.push({ step: 'cleanup', deleted: false, error: e.message });
+        // テストメンバーを削除 — 複数のAPIパターンを試す
+        const deleteAttempts = [
+          { name: 'DELETE /member/{id}', method: 'DELETE', url: `${passkitHost}/members/member/${member.id}`, body: null },
+          { name: 'DELETE /member body:{id}', method: 'DELETE', url: `${passkitHost}/members/member`, body: JSON.stringify({ id: member.id }) },
+          { name: 'PUT expire', method: 'PUT', url: `${passkitHost}/members/member`, body: JSON.stringify({ id: member.id, expiryDate: '2020-01-01T00:00:00Z', optOut: true }) },
+        ];
+
+        for (const attempt of deleteAttempts) {
+          try {
+            const opts = {
+              method: attempt.method,
+              headers: { 'Authorization': token, 'Content-Type': 'application/json' },
+            };
+            if (attempt.body) opts.body = attempt.body;
+            const r = await fetch(attempt.url, opts);
+            const t = await r.text();
+            steps.push({ step: `cleanup_${attempt.name}`, status: r.status, ok: r.ok, body: t.substring(0, 300) });
+            if (r.ok) break; // 成功したら以降をスキップ
+          } catch (e) {
+            steps.push({ step: `cleanup_${attempt.name}`, error: e.message });
+          }
         }
       }
     } catch (err) {
