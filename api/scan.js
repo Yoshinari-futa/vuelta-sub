@@ -13,6 +13,16 @@ module.exports = async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
   if (req.method === 'OPTIONS') return res.status(200).end();
 
+  // GET: PIN検証のみ（カメラ起動前のチェック用）
+  if (req.method === 'GET') {
+    const pin = req.query?.secret;
+    const staffPin = process.env.SCAN_PIN || '0000';
+    if (pin === staffPin) {
+      return res.status(200).json({ valid: true });
+    }
+    return res.status(401).json({ valid: false, error: 'Invalid PIN' });
+  }
+
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
@@ -20,7 +30,7 @@ module.exports = async function handler(req, res) {
   const { memberId, secret } = req.body || {};
 
   // 簡易認証（スタッフ用PIN）
-  const staffPin = process.env.SCAN_PIN || 'vuelta2026';
+  const staffPin = process.env.SCAN_PIN || '0000';
   if (secret !== staffPin) {
     return res.status(401).json({ error: 'Invalid PIN' });
   }

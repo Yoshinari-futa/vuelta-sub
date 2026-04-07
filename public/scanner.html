@@ -171,20 +171,42 @@
   const pinError = document.getElementById('pinError');
 
   if (staffPin) {
-    pinOverlay.classList.add('hidden');
-    startCamera();
+    // 保存済みPINもサーバーで再検証
+    fetch('/scan?secret=' + encodeURIComponent(staffPin))
+      .then(r => r.json())
+      .then(d => {
+        if (d.valid) { pinOverlay.classList.add('hidden'); startCamera(); }
+        else { sessionStorage.removeItem(PIN_KEY); staffPin = ''; }
+      })
+      .catch(() => { sessionStorage.removeItem(PIN_KEY); staffPin = ''; });
   }
 
   pinInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') submitPin(); });
   pinBtn.addEventListener('click', submitPin);
 
-  function submitPin() {
+  async function submitPin() {
     const val = pinInput.value.trim();
     if (!val) { pinError.textContent = 'PINを入力してください'; return; }
-    staffPin = val;
-    sessionStorage.setItem(PIN_KEY, staffPin);
-    pinOverlay.classList.add('hidden');
-    startCamera();
+    pinBtn.disabled = true;
+    pinBtn.textContent = '...';
+    try {
+      const resp = await fetch('/scan?secret=' + encodeURIComponent(val));
+      const data = await resp.json();
+      if (resp.ok && data.valid) {
+        staffPin = val;
+        sessionStorage.setItem(PIN_KEY, staffPin);
+        pinOverlay.classList.add('hidden');
+        startCamera();
+      } else {
+        pinError.textContent = 'PINが正しくありません';
+        pinInput.value = '';
+        pinInput.focus();
+      }
+    } catch (err) {
+      pinError.textContent = '通信エラー';
+    }
+    pinBtn.disabled = false;
+    pinBtn.textContent = 'ENTER';
   }
 
   // ── カメラ起動 & QR読み取り ──

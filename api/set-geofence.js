@@ -2,7 +2,7 @@
  * PassKit Geofence Setup Utility
  * GET /api/set-geofence
  *
- * Sets VUELTA location (lat:34.3966, lng:132.4596) on PassKit program
+ * Sets VUELTA location (lat:34.3893066, lng:132.4541823) on PassKit program
  * for Google Wallet location-based notifications
  */
 const jwt = require('jsonwebtoken');
@@ -45,14 +45,13 @@ module.exports = async function handler(req, res) {
     const locationPayload = {
       id: programId,
       locations: [{
-        latitude: 34.3966,
-        longitude: 132.4596,
-        relevantText: 'VUELTAの近くです — FIRST DRINK PASSを提示で最初の一杯が無料！',
+        latitude: 34.3893066,
+        longitude: 132.4541823,
+        relevantText: 'VUELTA is open tonight. See you soon!',
         altitude: 0,
       }],
       messages: [
-        { header: 'VUELTA', body: 'Near VUELTA — Show your FIRST DRINK PASS for a free first drink!', messageType: 'TEXT' },
-        { header: 'VUELTA', body: 'VUELTAの近くです。FIRST DRINK PASSで最初の一杯が無料！', messageType: 'TEXT' },
+        { header: 'VUELTA', body: 'VUELTA is open tonight. See you soon!', messageType: 'TEXT' },
       ],
     };
 
@@ -83,7 +82,7 @@ module.exports = async function handler(req, res) {
   res.json({
     endpoint: 'set-geofence',
     timestamp: new Date().toISOString(),
-    target: { lat: 34.3966, lng: 132.4596, location: 'VUELTA Hiroshima' },
+    target: { lat: 34.3893066, lng: 132.4541823, location: 'VUELTA Hiroshima' },
     steps: steps
   });
 };
