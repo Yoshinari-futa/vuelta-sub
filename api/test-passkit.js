@@ -1,6 +1,7 @@
 /**
  * GET /test-passkit
  * PassKit API接続診断 — tier一覧取得 + メンバー作成テスト
+ * ?program=XXXX で別のプログラムIDを試せる
  */
 const jwt = require('jsonwebtoken');
 
@@ -10,7 +11,7 @@ module.exports = async function handler(req, res) {
   try {
     const passkitApiKeyId = (process.env.PASSKIT_API_KEY || '').trim();
     const passkitApiKeySecret = (process.env.PASSKIT_API_KEY_SECRET || '').trim();
-    const programId = process.env.PASSKIT_PROGRAM_ID;
+    const programId = req.query?.program || process.env.PASSKIT_PROGRAM_ID;
     const tierId = process.env.PASSKIT_TIER_ID;
     let passkitHost = process.env.PASSKIT_HOST || 'api.pub2.passkit.io';
     if (!passkitHost.startsWith('http')) passkitHost = 'https://' + passkitHost;
@@ -82,11 +83,12 @@ module.exports = async function handler(req, res) {
       steps.push({ step: 'tiers_alt_error', message: err.message });
     }
 
-    // === ステップ4: tierId なしでメンバー作成を試みる ===
+    // === ステップ4: tierId ありでメンバー作成を試みる（本番と同じ形式） ===
     const testExternalId = 'diag_test_' + Date.now();
     try {
-      const bodyNoTier = {
+      const bodyWithTier = {
         programId,
+        tierId,
         person: {
           displayName: 'Diagnostic Test',
           emailAddress: 'test@example.com',
@@ -97,25 +99,27 @@ module.exports = async function handler(req, res) {
         points: 0,
         tierPoints: 0,
       };
-      const noTierRes = await fetch(`${passkitHost}/members/member`, {
+      steps.push({ step: 'create_request', body: bodyWithTier });
+
+      const createRes = await fetch(`${passkitHost}/members/member`, {
         method: 'POST',
         headers: { 'Authorization': token, 'Content-Type': 'application/json' },
-        body: JSON.stringify(bodyNoTier),
+        body: JSON.stringify(bodyWithTier),
       });
-      const noTierText = await noTierRes.text();
+      const createText = await createRes.text();
       steps.push({
-        step: 'create_member_no_tier',
-        status: noTierRes.status,
-        ok: noTierRes.ok,
-        body: noTierText.substring(0, 1000),
+        step: 'create_member_with_tier',
+        status: createRes.status,
+        ok: createRes.ok,
+        body: createText.substring(0, 1000),
       });
 
       // 成功した場合、Wallet URLを生成して削除
-      if (noTierRes.ok) {
-        const member = JSON.parse(noTierText);
+      if (createRes.ok) {
+        const member = JSON.parse(createText);
         const region = (process.env.PASSKIT_HOST || '').includes('pub1') ? 'pub1' : 'pub2';
         const walletUrl = `https://${region}.pskt.io/${member.id}`;
-        steps.push({ step: 'SUCCESS_NO_TIER', memberId: member.id, walletUrl });
+        steps.push({ step: 'SUCCESS', memberId: member.id, walletUrl });
 
         // テストメンバーを削除
         try {
@@ -129,7 +133,7 @@ module.exports = async function handler(req, res) {
         }
       }
     } catch (err) {
-      steps.push({ step: 'create_member_no_tier_error', message: err.message });
+      steps.push({ step: 'create_member_error', message: err.message });
     }
 
   } catch (err) {
