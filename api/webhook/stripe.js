@@ -268,6 +268,9 @@ async function sendMembershipEmail(transporter, email, name, walletUrl) {
                 <span style="color:#ddd;margin:0 6px;">&middot;</span>
                 <a href="https://www.vuelta.jp/" style="color:#999;text-decoration:none;font-size:11px;">Website</a>
               </p>
+              <p style="margin:12px 0 0;">
+                <a href="https://subsc-webhook.vercel.app/cancel" style="color:#ccc;text-decoration:none;font-size:10px;">サブスクリプションの管理・解約</a>
+              </p>
             </td></tr>
           </table>
         </td></tr>

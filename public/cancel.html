@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FIRST-DRINK PASS 解約 | VUELTA</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap');
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: #ffffff;
+            color: #1a1a1a;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 48px 20px;
+        }
+        .page { max-width: 400px; width: 100%; }
+
+        /* Logo */
+        .brand { text-align: center; margin-bottom: 48px; }
+        .brand img { height: 32px; width: auto; }
+
+        /* Card */
+        .card {
+            background: #fafafa;
+            border-radius: 16px;
+            padding: 36px 28px;
+            margin-bottom: 32px;
+        }
+        .card h1 {
+            font-size: 18px;
+            font-weight: 500;
+            margin-bottom: 12px;
+            text-align: center;
+        }
+        .card p {
+            font-size: 13px;
+            color: #666;
+            line-height: 1.8;
+            text-align: center;
+            margin-bottom: 28px;
+        }
+
+        /* Form */
+        .form-group { margin-bottom: 20px; }
+        .form-group label {
+            display: block;
+            font-size: 11px;
+            font-weight: 600;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            color: #999;
+            margin-bottom: 8px;
+        }
+        .form-group input {
+            width: 100%;
+            padding: 14px 16px;
+            border: 1px solid #e0e0e0;
+            border-radius: 10px;
+            font-size: 15px;
+            font-family: inherit;
+            background: #fff;
+            transition: border-color 0.2s;
+            -webkit-appearance: none;
+        }
+        .form-group input:focus {
+            outline: none;
+            border-color: #1a1a1a;
+        }
+
+        .btn {
+            display: block;
+            width: 100%;
+            padding: 14px;
+            background: #1a1a1a;
+            color: #fff;
+            border: none;
+            border-radius: 50px;
+            font-size: 13px;
+            font-weight: 600;
+            letter-spacing: 0.06em;
+            cursor: pointer;
+            transition: opacity 0.2s;
+            font-family: inherit;
+        }
+        .btn:hover { opacity: 0.85; }
+        .btn:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+
+        /* Status messages */
+        .status {
+            text-align: center;
+            padding: 16px;
+            border-radius: 10px;
+            font-size: 13px;
+            line-height: 1.7;
+            margin-bottom: 24px;
+            display: none;
+        }
+        .status.error {
+            display: block;
+            background: #fef2f2;
+            color: #b91c1c;
+        }
+        .status.not-found {
+            display: block;
+            background: #fffbeb;
+            color: #92400e;
+        }
+        .status.done {
+            display: block;
+            background: #f0fdf4;
+            color: #166534;
+        }
+
+        /* Footer */
+        .footer {
+            text-align: center;
+            padding-top: 16px;
+        }
+        .footer a {
+            font-size: 12px;
+            color: #999;
+            text-decoration: none;
+        }
+        .footer a:hover { color: #666; }
+
+        .note {
+            font-size: 11px;
+            color: #999;
+            text-align: center;
+            margin-top: 16px;
+            line-height: 1.7;
+        }
+    </style>
+</head>
+<body>
+    <div class="page">
+        <div class="brand">
+            <img src="https://vuelta.jp/images/vuelta-logo.png" alt="VUELTA" onerror="this.outerHTML='<span style=\'font-size:24px;font-weight:600;letter-spacing:0.12em;\'>VUELTA</span>'">
+        </div>
+
+        <!-- Status messages -->
+        <div id="status-error" class="status error">
+            エラーが発生しました。しばらく経ってからもう一度お試しください。
+        </div>
+        <div id="status-not-found" class="status not-found">
+            このメールアドレスでの登録が見つかりませんでした。<br>ご登録時のメールアドレスをご確認ください。
+        </div>
+        <div id="status-done" class="status done">
+            手続きが完了しました。ありがとうございました。
+        </div>
+
+        <div class="card">
+            <h1>サブスクリプション管理</h1>
+            <p>
+                ご登録のメールアドレスを入力してください。<br>
+                解約・お支払い方法の変更ができます。
+            </p>
+
+            <form id="portal-form" action="/portal" method="GET">
+                <div class="form-group">
+                    <label for="email">メールアドレス</label>
+                    <input
+                        type="email"
+                        id="email"
+                        name="email"
+                        placeholder="your@email.com"
+                        required
+                        autocomplete="email"
+                    >
+                </div>
+                <button type="submit" class="btn" id="submit-btn">
+                    管理画面へ進む
+                </button>
+            </form>
+
+            <p class="note">
+                Stripeの安全な画面で手続きが行えます。
+            </p>
+        </div>
+
+        <div class="footer">
+            <a href="https://www.vuelta.jp/">vuelta.jp</a>
+        </div>
+    </div>
+
+    <script>
+        // Show status messages based on URL params
+        const params = new URLSearchParams(window.location.search);
+        const status = params.get('status');
+        if (status === 'error') {
+            document.getElementById('status-error').style.display = 'block';
+        } else if (status === 'not_found') {
+            document.getElementById('status-not-found').style.display = 'block';
+        } else if (status === 'done') {
+            document.getElementById('status-done').style.display = 'block';
+        }
+
+        // Form submission - show loading state
+        document.getElementById('portal-form').addEventListener('submit', function() {
+            const btn = document.getElementById('submit-btn');
+            btn.textContent = '読み込み中...';
+            btn.disabled = true;
+        });
+    </script>
+</body>
+</html>

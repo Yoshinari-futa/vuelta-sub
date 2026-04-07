@@ -50,6 +50,14 @@
     {
       "src": "/thanks",
       "dest": "/public/thanks.html"
+    },
+    {
+      "src": "/cancel",
+      "dest": "/public/cancel.html"
+    },
+    {
+      "src": "/portal",
+      "dest": "/api/portal.js"
     }
   ]
 }
