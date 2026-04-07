@@ -102,62 +102,74 @@ module.exports = async function handler(req, res) {
       steps.push({ step: 'get_tier_error', message: err.message });
     }
 
-    // === Step 3: imageId取得済みなら、tierを更新してstrip画像を設定 ===
+    // === Step 3: imageId取得済みなら、tier・template・programを更新 ===
     if (imageId) {
-      // 既存のimageIdsを保持しつつstripを追加
       const existingImageIds = tierData?.imageIds || {};
       const updatedImageIds = { ...existingImageIds, strip: imageId };
+      const passTemplateId = tierData?.passTemplateId;
+      const tierIndex = tierData?.tierIndex || 1;
+      let updated = false;
 
-      const updatePayloads = [
-        {
-          name: 'tier_put',
+      // 3a: tier PUT（tierIndex必須）
+      try {
+        const resp = await fetch(`${host}/members/tier`, {
           method: 'PUT',
-          url: `${host}/members/tier`,
-          body: {
+          headers: { 'Authorization': token, 'Content-Type': 'application/json' },
+          body: JSON.stringify({
             id: tierId,
             programId: programId,
+            tierIndex: tierIndex,
             imageIds: updatedImageIds,
-          },
-        },
-        {
-          name: 'tier_patch',
-          method: 'PATCH',
-          url: `${host}/members/tier`,
-          body: {
-            id: tierId,
-            programId: programId,
-            imageIds: updatedImageIds,
-          },
-        },
-      ];
+          }),
+        });
+        const text = await resp.text();
+        steps.push({ step: 'update_tier_put', status: resp.status, ok: resp.ok, body: text.substring(0, 1000) });
+        if (resp.ok) { updated = true; steps.push({ step: 'TIER_STRIP_SET', imageId }); }
+      } catch (err) {
+        steps.push({ step: 'update_tier_put_error', message: err.message });
+      }
 
-      for (const attempt of updatePayloads) {
+      // 3b: passTemplate更新（画像をテンプレートレベルで設定）
+      if (passTemplateId) {
         try {
-          const resp = await fetch(attempt.url, {
-            method: attempt.method,
-            headers: {
-              'Authorization': token,
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify(attempt.body),
+          const resp = await fetch(`${host}/template`, {
+            method: 'PUT',
+            headers: { 'Authorization': token, 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              id: passTemplateId,
+              imageIds: updatedImageIds,
+            }),
           });
           const text = await resp.text();
-          steps.push({
-            step: `update_${attempt.name}`,
-            status: resp.status,
-            ok: resp.ok,
-            body: text.substring(0, 1000),
-          });
-          if (resp.ok) {
-            steps.push({ step: 'STRIP_IMAGE_SET_SUCCESS', imageId, method: attempt.method });
-            break;
-          }
+          steps.push({ step: 'update_template', status: resp.status, ok: resp.ok, body: text.substring(0, 500) });
+          if (resp.ok) { updated = true; steps.push({ step: 'TEMPLATE_STRIP_SET', imageId }); }
         } catch (err) {
-          steps.push({ step: `update_${attempt.name}_error`, message: err.message });
+          steps.push({ step: 'update_template_error', message: err.message });
         }
       }
+
+      // 3c: program更新
+      try {
+        const resp = await fetch(`${host}/members/program`, {
+          method: 'PUT',
+          headers: { 'Authorization': token, 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            id: programId,
+            imageIds: updatedImageIds,
+          }),
+        });
+        const text = await resp.text();
+        steps.push({ step: 'update_program', status: resp.status, ok: resp.ok, body: text.substring(0, 500) });
+        if (resp.ok) { updated = true; steps.push({ step: 'PROGRAM_STRIP_SET', imageId }); }
+      } catch (err) {
+        steps.push({ step: 'update_program_error', message: err.message });
+      }
+
+      if (!updated) {
+        steps.push({ step: 'WARNING', message: 'No update succeeded. Strip image uploaded but not linked to tier/template/program.' });
+      }
     } else {
-      steps.push({ step: 'SKIP_TIER_UPDATE', reason: 'imageId not obtained from upload' });
+      steps.push({ step: 'SKIP_UPDATES', reason: 'imageId not obtained from upload' });
     }
 
     // === Step 4: 最終確認 — program情報のimageIds ===
