@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>VUELTA — Scan</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Helvetica Neue', sans-serif;
+    background: #0a0a0a; color: #fff; min-height: 100dvh;
+    display: flex; flex-direction: column; align-items: center;
+  }
+
+  /* ── Header ── */
+  .header {
+    padding: 20px 0 12px;
+    text-align: center;
+  }
+  .header h1 {
+    font-size: 14px; font-weight: 600; letter-spacing: 0.15em;
+    text-transform: uppercase; color: #ccc;
+  }
+
+  /* ── PIN overlay ── */
+  .pin-overlay {
+    position: fixed; inset: 0; z-index: 100;
+    background: #0a0a0a; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; gap: 20px;
+  }
+  .pin-overlay.hidden { display: none; }
+  .pin-overlay h2 {
+    font-size: 13px; font-weight: 600; letter-spacing: 0.12em;
+    text-transform: uppercase; color: #999;
+  }
+  .pin-input {
+    width: 200px; padding: 14px 16px; border-radius: 12px;
+    border: 1px solid #333; background: #1a1a1a; color: #fff;
+    font-size: 20px; text-align: center; letter-spacing: 0.2em;
+    -webkit-text-security: disc;
+  }
+  .pin-input:focus { outline: none; border-color: #2d5a3d; }
+  .pin-btn {
+    padding: 12px 40px; border-radius: 50px; border: none;
+    background: #2d5a3d; color: #fff; font-size: 13px;
+    font-weight: 600; letter-spacing: 0.06em; cursor: pointer;
+  }
+  .pin-btn:active { background: #1e3d29; }
+  .pin-error { color: #e74c3c; font-size: 12px; height: 16px; }
+
+  /* ── Camera ── */
+  .camera-wrap {
+    width: 100%; max-width: 400px; padding: 0 16px;
+    position: relative;
+  }
+  .camera-box {
+    width: 100%; aspect-ratio: 1; border-radius: 16px;
+    overflow: hidden; position: relative; background: #111;
+  }
+  #video {
+    width: 100%; height: 100%; object-fit: cover;
+  }
+  .scan-line {
+    position: absolute; top: 50%; left: 10%; right: 10%;
+    height: 2px; background: #2d5a3d; opacity: 0.8;
+    animation: scanPulse 2s ease-in-out infinite;
+  }
+  @keyframes scanPulse {
+    0%, 100% { opacity: 0.3; transform: translateY(-30px); }
+    50% { opacity: 0.9; transform: translateY(30px); }
+  }
+  .corner { position: absolute; width: 24px; height: 24px; border-color: #2d5a3d; border-style: solid; }
+  .corner.tl { top: 12px; left: 12px; border-width: 3px 0 0 3px; border-radius: 6px 0 0 0; }
+  .corner.tr { top: 12px; right: 12px; border-width: 3px 3px 0 0; border-radius: 0 6px 0 0; }
+  .corner.bl { bottom: 12px; left: 12px; border-width: 0 0 3px 3px; border-radius: 0 0 0 6px; }
+  .corner.br { bottom: 12px; right: 12px; border-width: 0 3px 3px 0; border-radius: 0 0 6px 0; }
+
+  .hint {
+    text-align: center; padding: 16px 0 8px;
+    font-size: 12px; color: #666; letter-spacing: 0.04em;
+  }
+
+  /* ── Result ── */
+  .result {
+    width: 100%; max-width: 400px; padding: 0 16px;
+    margin-top: 12px; display: none;
+  }
+  .result.show { display: block; }
+  .result-card {
+    background: #1a1a1a; border-radius: 14px; padding: 24px;
+    text-align: center;
+  }
+  .result-card .name {
+    font-size: 18px; font-weight: 600; margin-bottom: 6px;
+  }
+  .result-card .visits {
+    font-size: 48px; font-weight: 700; color: #2d5a3d;
+    line-height: 1.1;
+  }
+  .result-card .visits-label {
+    font-size: 12px; color: #888; letter-spacing: 0.1em;
+    text-transform: uppercase; margin-top: 4px;
+  }
+  .result-card .msg {
+    font-size: 13px; color: #aaa; margin-top: 14px;
+  }
+  .result-card.error { border: 1px solid #e74c3c; }
+  .result-card.error .name { color: #e74c3c; }
+
+  .next-btn {
+    display: block; width: 100%; max-width: 400px;
+    margin: 16px auto 32px; padding: 14px;
+    border-radius: 50px; border: 1px solid #333;
+    background: transparent; color: #ccc;
+    font-size: 13px; font-weight: 600; letter-spacing: 0.06em;
+    cursor: pointer;
+  }
+  .next-btn:active { background: #1a1a1a; }
+</style>
+</head>
+<body>
+
+<!-- PIN認証画面 -->
+<div class="pin-overlay" id="pinOverlay">
+  <h2>STAFF PIN</h2>
+  <input type="password" class="pin-input" id="pinInput" inputmode="numeric" maxlength="12" placeholder="••••">
+  <button class="pin-btn" id="pinBtn">ENTER</button>
+  <div class="pin-error" id="pinError"></div>
+</div>
+
+<!-- メイン画面 -->
+<div class="header">
+  <h1>VUELTA — Scan</h1>
+</div>
+
+<div class="camera-wrap">
+  <div class="camera-box">
+    <video id="video" autoplay playsinline muted></video>
+    <div class="scan-line"></div>
+    <div class="corner tl"></div>
+    <div class="corner tr"></div>
+    <div class="corner bl"></div>
+    <div class="corner br"></div>
+  </div>
+</div>
+<div class="hint" id="hint">Wallet の QR コードをかざしてください</div>
+
+<div class="result" id="result">
+  <div class="result-card" id="resultCard">
+    <div class="name" id="rName"></div>
+    <div class="visits" id="rVisits"></div>
+    <div class="visits-label" id="rVisitsLabel">VISITS</div>
+    <div class="msg" id="rMsg"></div>
+  </div>
+</div>
+<button class="next-btn" id="nextBtn" style="display:none" onclick="resetScan()">NEXT SCAN →</button>
+
+<!-- QR / Barcode 読み取りライブラリ -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html5-qrcode/2.3.8/html5-qrcode.min.js"></script>
+
+<script>
+  const PIN_KEY = 'vuelta_scan_pin';
+  let staffPin = sessionStorage.getItem(PIN_KEY) || '';
+  let scanning = false;
+  let html5QrCode = null;
+
+  // ── PIN認証 ──
+  const pinOverlay = document.getElementById('pinOverlay');
+  const pinInput = document.getElementById('pinInput');
+  const pinBtn = document.getElementById('pinBtn');
+  const pinError = document.getElementById('pinError');
+
+  if (staffPin) {
+    pinOverlay.classList.add('hidden');
+    startCamera();
+  }
+
+  pinInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') submitPin(); });
+  pinBtn.addEventListener('click', submitPin);
+
+  function submitPin() {
+    const val = pinInput.value.trim();
+    if (!val) { pinError.textContent = 'PINを入力してください'; return; }
+    staffPin = val;
+    sessionStorage.setItem(PIN_KEY, staffPin);
+    pinOverlay.classList.add('hidden');
+    startCamera();
+  }
+
+  // ── カメラ起動 & QR読み取り ──
+  async function startCamera() {
+    scanning = true;
+    document.getElementById('result').classList.remove('show');
+    document.getElementById('nextBtn').style.display = 'none';
+    document.getElementById('hint').textContent = 'Wallet の QR コードをかざしてください';
+
+    const videoEl = document.getElementById('video');
+
+    // html5-qrcode は自身の <video> を使うため、既存 video は隠す
+    videoEl.style.display = 'none';
+
+    if (html5QrCode) {
+      try { await html5QrCode.stop(); } catch (_) {}
+    }
+
+    const cameraBox = document.querySelector('.camera-box');
+    // リーダー用 div
+    let readerDiv = document.getElementById('qr-reader');
+    if (!readerDiv) {
+      readerDiv = document.createElement('div');
+      readerDiv.id = 'qr-reader';
+      readerDiv.style.width = '100%';
+      readerDiv.style.height = '100%';
+      cameraBox.insertBefore(readerDiv, cameraBox.firstChild);
+    }
+
+    html5QrCode = new Html5Qrcode('qr-reader');
+
+    try {
+      await html5QrCode.start(
+        { facingMode: 'environment' },
+        { fps: 10, qrbox: (w, h) => ({ width: Math.floor(Math.min(w, h) * 0.7), height: Math.floor(Math.min(w, h) * 0.7) }) },
+        onScanSuccess,
+        () => {} // ignore failures
+      );
+      // 内部 video のスタイルを上書き
+      const innerVideo = readerDiv.querySelector('video');
+      if (innerVideo) {
+        innerVideo.style.objectFit = 'cover';
+        innerVideo.style.borderRadius = '16px';
+      }
+      // ライブラリが生成する装飾を隠す
+      const scanRegion = document.getElementById('qr-shaded-region');
+      if (scanRegion) scanRegion.style.display = 'none';
+    } catch (err) {
+      document.getElementById('hint').textContent = 'カメラを許可してください';
+      console.error('Camera error:', err);
+    }
+  }
+
+  // ── スキャン成功 ──
+  async function onScanSuccess(decodedText) {
+    if (!scanning) return;
+    scanning = false;
+
+    // 振動フィードバック
+    if (navigator.vibrate) navigator.vibrate(100);
+
+    try { await html5QrCode.stop(); } catch (_) {}
+
+    document.getElementById('hint').textContent = '確認中...';
+
+    // QRコードの中身から memberId を抽出
+    // PassKit QR は通常 URL（https://pub2.pskt.io/MEMBER_ID）か、直接 ID
+    let memberId = decodedText.trim();
+    const psktMatch = memberId.match(/pskt\.io\/([A-Za-z0-9]+)/);
+    if (psktMatch) memberId = psktMatch[1];
+
+    try {
+      const resp = await fetch('/scan', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ memberId, secret: staffPin }),
+      });
+      const data = await resp.json();
+
+      const card = document.getElementById('resultCard');
+      const nameEl = document.getElementById('rName');
+      const visitsEl = document.getElementById('rVisits');
+      const msgEl = document.getElementById('rMsg');
+
+      if (resp.ok && data.success) {
+        card.className = 'result-card';
+        nameEl.textContent = data.member || 'Member';
+        visitsEl.textContent = data.visits;
+        document.getElementById('rVisitsLabel').textContent = 'VISITS';
+        msgEl.textContent = data.message || '';
+      } else {
+        card.className = 'result-card error';
+        if (resp.status === 401) {
+          nameEl.textContent = 'PIN エラー';
+          visitsEl.textContent = '✕';
+          document.getElementById('rVisitsLabel').textContent = '';
+          msgEl.textContent = 'PINが正しくありません。リロードしてください。';
+          sessionStorage.removeItem(PIN_KEY);
+        } else {
+          nameEl.textContent = 'エラー';
+          visitsEl.textContent = '—';
+          document.getElementById('rVisitsLabel').textContent = '';
+          msgEl.textContent = data.error || 'スキャンに失敗しました';
+        }
+      }
+
+      document.getElementById('result').classList.add('show');
+      document.getElementById('nextBtn').style.display = 'block';
+      document.getElementById('hint').textContent = '';
+
+    } catch (err) {
+      document.getElementById('hint').textContent = '通信エラー: ' + err.message;
+      setTimeout(() => startCamera(), 2000);
+    }
+  }
+
+  function resetScan() {
+    startCamera();
+  }
+</script>
+</body>
+</html>

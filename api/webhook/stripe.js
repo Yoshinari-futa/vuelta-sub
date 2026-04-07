@@ -40,6 +40,51 @@ function getTransporter() {
   });
 }
 
+// PassKit認証トークン生成（共通）
+function getPassKitAuth() {
+  const passkitApiKeyId = (process.env.PASSKIT_API_KEY || '').trim();
+  const passkitApiKeySecret = (process.env.PASSKIT_API_KEY_SECRET || '').trim();
+  if (!passkitApiKeyId || !passkitApiKeySecret) {
+    throw new Error('PASSKIT_API_KEY and PASSKIT_API_KEY_SECRET are required');
+  }
+  const now = Math.floor(Date.now() / 1000);
+  const token = jwt.sign(
+    { uid: passkitApiKeyId, iat: now, exp: now + 3600 },
+    passkitApiKeySecret,
+    { algorithm: 'HS256', header: { alg: 'HS256', typ: 'JWT' } }
+  );
+  let host = process.env.PASSKIT_HOST || 'api.pub2.passkit.io';
+  if (!host.startsWith('http')) host = 'https://' + host;
+  return { token, baseUrl: host.replace(/\/$/, '') };
+}
+
+// PassKit会員証削除（解約時）
+async function deletePassKitMember(externalId) {
+  const { token, baseUrl } = getPassKitAuth();
+  const programId = process.env.PASSKIT_PROGRAM_ID;
+  console.log(`[PASSKIT] Deleting member: externalId=${externalId}`);
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 5000);
+
+  try {
+    // externalIdでメンバーを検索して削除
+    const response = await fetch(`${baseUrl}/members/member/external/${programId}/${externalId}`, {
+      method: 'DELETE',
+      headers: { 'Authorization': token },
+      signal: controller.signal,
+    });
+    clearTimeout(timeout);
+    const text = await response.text();
+    console.log(`[PASSKIT] Delete response: ${response.status} - ${text.substring(0, 200)}`);
+    return response.ok;
+  } catch (err) {
+    clearTimeout(timeout);
+    console.error(`[PASSKIT] Delete failed: ${err.message}`);
+    return false;
+  }
+}
+
 // PassKit会員証生成（タイムアウト付き）
 async function generatePassKitCard({ email, name, customerId, tierId }) {
   let passkitHost = process.env.PASSKIT_HOST || 'api.pub2.passkit.io';
@@ -313,12 +358,12 @@ module.exports = async function handler(req, res) {
 
   console.log(`[WEBHOOK] Event received: ${event.type} (${event.id})`);
 
+  // ===== 新規決済完了 =====
   if (event.type === 'checkout.session.completed') {
     const session = event.data.object;
     console.log(`[WEBHOOK] Session: customer=${session.customer}, email=${session.customer_email || session.customer_details?.email || 'none'}`);
 
     try {
-      // セッションから直接メール・名前を取得（外部API呼び出し不要）
       const customerEmail = session.customer_email || session.customer_details?.email;
       const customerName = session.customer_details?.name || 'VUELTA Member';
       console.log(`[WEBHOOK] Customer: name=${customerName}, email=${customerEmail}, stripeId=${session.customer}`);
@@ -340,10 +385,9 @@ module.exports = async function handler(req, res) {
         console.log(`[PASSKIT] SUCCESS: ${walletUrl}`);
       } catch (err) {
         console.error(`[PASSKIT] FAILED: ${err.message}`);
-        // PassKit失敗してもメールは送る
       }
 
-      // メール送信（PassKit成功・失敗に関わらず必ず送信）
+      // メール送信
       console.log(`[EMAIL] Sending to ${customerEmail}...`);
       const transporter = getTransporter();
       if (transporter) {
@@ -357,7 +401,7 @@ module.exports = async function handler(req, res) {
         console.error('[EMAIL] FAILED: No transporter (missing EMAIL_USER or EMAIL_PASS)');
       }
 
-      // Slack通知（メール送信とは独立して実行）
+      // Slack通知
       try {
         await sendSlackNotification({ name: customerName, email: customerEmail, walletUrl });
       } catch (err) {
@@ -366,6 +410,39 @@ module.exports = async function handler(req, res) {
 
     } catch (err) {
       console.error(`[WEBHOOK] Processing error: ${err.message}`);
+    }
+  }
+
+  // ===== サブスク解約 =====
+  if (event.type === 'customer.subscription.deleted') {
+    const subscription = event.data.object;
+    const customerId = subscription.customer;
+    console.log(`[WEBHOOK] Subscription cancelled: customer=${customerId}`);
+
+    try {
+      // PassKitメンバーを削除（externalIdはStripe customer ID）
+      const deleted = await deletePassKitMember(customerId);
+      console.log(`[PASSKIT] Member delete: ${deleted ? 'SUCCESS' : 'FAILED or NOT FOUND'}`);
+
+      // Slack通知
+      const webhookUrl = process.env.SLACK_WEBHOOK_URL;
+      if (webhookUrl) {
+        await fetch(webhookUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            blocks: [
+              { type: 'header', text: { type: 'plain_text', text: '🚪 FIRST-DRINK PASS 解約', emoji: true } },
+              { type: 'section', fields: [
+                { type: 'mrkdwn', text: `*Stripe ID*\n${customerId}` },
+                { type: 'mrkdwn', text: `*Walletカード*\n${deleted ? '✅ 削除済み' : '⚠️ 手動確認が必要'}` },
+              ]},
+            ]
+          }),
+        });
+      }
+    } catch (err) {
+      console.error(`[WEBHOOK] Cancellation processing error: ${err.message}`);
     }
   }
 

@@ -41,11 +41,19 @@ module.exports = async function handler(req, res) {
       programData = JSON.parse(programText);
     }
 
-    // Step 2: Update program with locations
+    // Step 2: Update program with locations + 100m geofence
     const locationPayload = {
       id: programId,
-      locations: [{ latitude: 34.3966, longitude: 132.4596 }],
-      messages: [{ header: 'VUELTA', body: 'FIRST DRINK PASS - Show your pass for a free first drink!', messageType: 'TEXT' }]
+      locations: [{
+        latitude: 34.3966,
+        longitude: 132.4596,
+        relevantText: 'VUELTAの近くです — FIRST DRINK PASSを提示で最初の一杯が無料！',
+        altitude: 0,
+      }],
+      messages: [
+        { header: 'VUELTA', body: 'Near VUELTA — Show your FIRST DRINK PASS for a free first drink!', messageType: 'TEXT' },
+        { header: 'VUELTA', body: 'VUELTAの近くです。FIRST DRINK PASSで最初の一杯が無料！', messageType: 'TEXT' },
+      ],
     };
 
     if (programData) {

@@ -36,6 +36,18 @@
       "dest": "/api/set-geofence.js"
     },
     {
+      "src": "/create-member",
+      "dest": "/api/create-member.js"
+    },
+    {
+      "src": "/scan",
+      "dest": "/api/scan.js"
+    },
+    {
+      "src": "/scanner",
+      "dest": "/public/scanner.html"
+    },
+    {
       "src": "/thanks",
       "dest": "/public/thanks.html"
     }
