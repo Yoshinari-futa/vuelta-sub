@@ -58,6 +58,10 @@
     {
       "src": "/portal",
       "dest": "/api/portal.js"
+    },
+    {
+      "src": "/cleanup-member",
+      "dest": "/api/cleanup-member.js"
     }
   ]
 }
