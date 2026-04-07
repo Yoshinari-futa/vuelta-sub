@@ -82,13 +82,14 @@ async function deletePassKitMember(externalId) {
     const memberId = member.id;
     console.log(`[PASSKIT] Found member: ${memberId}`);
 
-    // Step 2: memberIdで削除
+    // Step 2: memberIdで削除（ボディにIDを渡す方式 — PassKit REST APIの正しいパターン）
     const controller2 = new AbortController();
     const timeout2 = setTimeout(() => controller2.abort(), 5000);
 
-    const deleteResponse = await fetch(`${baseUrl}/members/member/${memberId}`, {
+    const deleteResponse = await fetch(`${baseUrl}/members/member`, {
       method: 'DELETE',
-      headers: { 'Authorization': token },
+      headers: { 'Authorization': token, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: memberId }),
       signal: controller2.signal,
     });
     clearTimeout(timeout2);
