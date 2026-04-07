@@ -62,6 +62,10 @@
     {
       "src": "/cleanup-member",
       "dest": "/api/cleanup-member.js"
+    },
+    {
+      "src": "/setup-strip-image",
+      "dest": "/api/setup-strip-image.js"
     }
   ]
 }
