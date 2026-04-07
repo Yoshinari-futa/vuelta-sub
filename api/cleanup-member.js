@@ -6,8 +6,9 @@ const jwt = require('jsonwebtoken');
 
 module.exports = async function handler(req, res) {
   const externalId = req.query.externalId;
-  if (!externalId) {
-    return res.status(400).json({ error: 'externalId query param required' });
+  const passkitId = req.query.passkitId;
+  if (!externalId && !passkitId) {
+    return res.status(400).json({ error: 'externalId or passkitId query param required' });
   }
 
   const passkitApiKeyId = (process.env.PASSKIT_API_KEY || '').trim();
@@ -27,26 +28,32 @@ module.exports = async function handler(req, res) {
   const steps = [];
 
   try {
-    // Step 1: externalIdでメンバー検索
-    const getResp = await fetch(`${baseUrl}/members/member/external/${programId}/${externalId}`, {
-      method: 'GET',
-      headers: { 'Authorization': token },
-    });
-    const getText = await getResp.text();
-    steps.push({ step: 'lookup', status: getResp.status, body: getText.substring(0, 300) });
+    let memberId = passkitId;
 
-    if (!getResp.ok) {
-      return res.json({ success: false, message: 'Member not found', steps });
+    // passkitIdが指定されていなければexternalIdで検索
+    if (!memberId) {
+      const getResp = await fetch(`${baseUrl}/members/member/external/${programId}/${externalId}`, {
+        method: 'GET',
+        headers: { 'Authorization': token },
+      });
+      const getText = await getResp.text();
+      steps.push({ step: 'lookup', status: getResp.status, body: getText.substring(0, 300) });
+
+      if (!getResp.ok) {
+        return res.json({ success: false, message: 'Member not found', steps });
+      }
+
+      const member = JSON.parse(getText);
+      memberId = member.id;
     }
 
-    const member = JSON.parse(getText);
-    steps.push({ step: 'found', memberId: member.id });
+    steps.push({ step: 'found', memberId });
 
-    // Step 2: ボディ方式で削除
+    // ボディ方式で削除
     const delResp = await fetch(`${baseUrl}/members/member`, {
       method: 'DELETE',
       headers: { 'Authorization': token, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id: member.id }),
+      body: JSON.stringify({ id: memberId }),
     });
     const delText = await delResp.text();
     steps.push({ step: 'delete', status: delResp.status, ok: delResp.ok, body: delText.substring(0, 300) });
