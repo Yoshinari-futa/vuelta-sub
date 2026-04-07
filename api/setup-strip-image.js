@@ -68,7 +68,8 @@ module.exports = async function handler(req, res) {
       if (resp.ok) {
         try {
           const data = JSON.parse(text);
-          imageId = data.id || data.Id || data.imageId || data.ID;
+          // PassKit /images returns: { strip: "imageId", icon: "", ... }
+          imageId = data.strip || data.id || data.Id || data.imageId || data.ID;
           steps.push({ step: 'image_id_found', imageId });
         } catch (e) {
           // テキストがそのままIDの可能性
@@ -85,7 +86,7 @@ module.exports = async function handler(req, res) {
     // === Step 2: tier情報を取得（現在のimageIds確認） ===
     let tierData = null;
     try {
-      const tierResp = await fetch(`${host}/members/tier/${tierId}/${programId}`, {
+      const tierResp = await fetch(`${host}/members/tier/${programId}/${tierId}`, {
         headers: { 'Authorization': token },
       });
       const tierText = await tierResp.text();
