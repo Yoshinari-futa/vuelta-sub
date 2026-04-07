@@ -9,12 +9,7 @@ const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
 const nodemailer = require('nodemailer');
 const jwt = require('jsonwebtoken');
 
-// Vercelではbodyのパースを無効にする（Stripe署名検証のため）
-module.exports.config = {
-  api: {
-    bodyParser: false,
-  },
-};
+// config は handler に付与（下部参照）
 
 // rawBodyを取得するヘルパー
 function getRawBody(req) {
@@ -340,7 +335,7 @@ async function sendSlackNotification({ name, email, walletUrl }) {
 }
 
 // メインハンドラー
-module.exports = async function handler(req, res) {
+async function handler(req, res) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
@@ -447,4 +442,13 @@ module.exports = async function handler(req, res) {
   }
 
   res.json({ received: true });
+}
+
+// Vercelではbodyのパースを無効にする（Stripe署名検証のため）
+// module.exports の後に config を付与する（上書き防止）
+module.exports = handler;
+module.exports.config = {
+  api: {
+    bodyParser: false,
+  },
 };
