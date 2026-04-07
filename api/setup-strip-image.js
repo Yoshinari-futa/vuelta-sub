@@ -103,70 +103,78 @@ module.exports = async function handler(req, res) {
     }
 
     // === Step 3: imageId取得済みなら、tier・template・programを更新 ===
+    // PassKit PUT requires ALL required fields — merge with fetched data
     if (imageId) {
-      const existingImageIds = tierData?.imageIds || {};
-      const updatedImageIds = { ...existingImageIds, strip: imageId };
+      const updatedImageIds = { ...(tierData?.imageIds || {}), strip: imageId };
       const passTemplateId = tierData?.passTemplateId;
-      const tierIndex = tierData?.tierIndex || 1;
       let updated = false;
 
-      // 3a: tier PUT（tierIndex必須）
-      try {
-        const resp = await fetch(`${host}/members/tier`, {
-          method: 'PUT',
-          headers: { 'Authorization': token, 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            id: tierId,
-            programId: programId,
-            tierIndex: tierIndex,
-            imageIds: updatedImageIds,
-          }),
-        });
-        const text = await resp.text();
-        steps.push({ step: 'update_tier_put', status: resp.status, ok: resp.ok, body: text.substring(0, 1000) });
-        if (resp.ok) { updated = true; steps.push({ step: 'TIER_STRIP_SET', imageId }); }
-      } catch (err) {
-        steps.push({ step: 'update_tier_put_error', message: err.message });
-      }
-
-      // 3b: passTemplate更新（画像をテンプレートレベルで設定）
-      if (passTemplateId) {
+      // 3a: tier PUT — spread existing tier data + override imageIds
+      if (tierData) {
         try {
-          const resp = await fetch(`${host}/template`, {
+          const tierBody = { ...tierData, imageIds: updatedImageIds };
+          const resp = await fetch(`${host}/members/tier`, {
             method: 'PUT',
             headers: { 'Authorization': token, 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              id: passTemplateId,
-              imageIds: updatedImageIds,
-            }),
+            body: JSON.stringify(tierBody),
           });
           const text = await resp.text();
-          steps.push({ step: 'update_template', status: resp.status, ok: resp.ok, body: text.substring(0, 500) });
-          if (resp.ok) { updated = true; steps.push({ step: 'TEMPLATE_STRIP_SET', imageId }); }
+          steps.push({ step: 'update_tier', status: resp.status, ok: resp.ok, body: text.substring(0, 1000) });
+          if (resp.ok) { updated = true; steps.push({ step: 'TIER_STRIP_SET', imageId }); }
+        } catch (err) {
+          steps.push({ step: 'update_tier_error', message: err.message });
+        }
+      }
+
+      // 3b: passTemplate — GET then PUT with imageIds
+      if (passTemplateId) {
+        try {
+          const tplResp = await fetch(`${host}/template/${passTemplateId}`, {
+            headers: { 'Authorization': token },
+          });
+          if (tplResp.ok) {
+            const tplData = JSON.parse(await tplResp.text());
+            steps.push({ step: 'get_template', currentImageIds: tplData.imageIds || 'none' });
+            const tplBody = { ...tplData, imageIds: { ...(tplData.imageIds || {}), strip: imageId } };
+            const putResp = await fetch(`${host}/template`, {
+              method: 'PUT',
+              headers: { 'Authorization': token, 'Content-Type': 'application/json' },
+              body: JSON.stringify(tplBody),
+            });
+            const putText = await putResp.text();
+            steps.push({ step: 'update_template', status: putResp.status, ok: putResp.ok, body: putText.substring(0, 500) });
+            if (putResp.ok) { updated = true; steps.push({ step: 'TEMPLATE_STRIP_SET', imageId }); }
+          } else {
+            steps.push({ step: 'get_template_failed', status: tplResp.status });
+          }
         } catch (err) {
           steps.push({ step: 'update_template_error', message: err.message });
         }
       }
 
-      // 3c: program更新
+      // 3c: program — GET then PUT with imageIds
       try {
-        const resp = await fetch(`${host}/members/program`, {
-          method: 'PUT',
-          headers: { 'Authorization': token, 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            id: programId,
-            imageIds: updatedImageIds,
-          }),
+        const progResp = await fetch(`${host}/members/program/${programId}`, {
+          headers: { 'Authorization': token },
         });
-        const text = await resp.text();
-        steps.push({ step: 'update_program', status: resp.status, ok: resp.ok, body: text.substring(0, 500) });
-        if (resp.ok) { updated = true; steps.push({ step: 'PROGRAM_STRIP_SET', imageId }); }
+        if (progResp.ok) {
+          const progData = JSON.parse(await progResp.text());
+          const progBody = { ...progData, imageIds: { ...(progData.imageIds || {}), strip: imageId } };
+          const putResp = await fetch(`${host}/members/program`, {
+            method: 'PUT',
+            headers: { 'Authorization': token, 'Content-Type': 'application/json' },
+            body: JSON.stringify(progBody),
+          });
+          const putText = await putResp.text();
+          steps.push({ step: 'update_program', status: putResp.status, ok: putResp.ok, body: putText.substring(0, 500) });
+          if (putResp.ok) { updated = true; steps.push({ step: 'PROGRAM_STRIP_SET', imageId }); }
+        }
       } catch (err) {
         steps.push({ step: 'update_program_error', message: err.message });
       }
 
       if (!updated) {
-        steps.push({ step: 'WARNING', message: 'No update succeeded. Strip image uploaded but not linked to tier/template/program.' });
+        steps.push({ step: 'WARNING', message: 'Image uploaded (id: ' + imageId + ') but no tier/template/program update succeeded.' });
       }
     } else {
       steps.push({ step: 'SKIP_UPDATES', reason: 'imageId not obtained from upload' });
