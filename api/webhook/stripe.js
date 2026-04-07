@@ -54,27 +54,49 @@ function getPassKitAuth() {
 }
 
 // PassKit会員証削除（解約時）
+// 手順: externalIdでメンバー検索 → memberIdを取得 → memberIdで削除
 async function deletePassKitMember(externalId) {
   const { token, baseUrl } = getPassKitAuth();
   const programId = process.env.PASSKIT_PROGRAM_ID;
-  console.log(`[PASSKIT] Deleting member: externalId=${externalId}`);
-
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 5000);
+  console.log(`[PASSKIT] Deleting member: externalId=${externalId}, programId=${programId}`);
 
   try {
-    // externalIdでメンバーを検索して削除
-    const response = await fetch(`${baseUrl}/members/member/external/${programId}/${externalId}`, {
+    // Step 1: externalIdでメンバーを検索してmemberIdを取得
+    const controller1 = new AbortController();
+    const timeout1 = setTimeout(() => controller1.abort(), 5000);
+
+    const getResponse = await fetch(`${baseUrl}/members/member/external/${programId}/${externalId}`, {
+      method: 'GET',
+      headers: { 'Authorization': token },
+      signal: controller1.signal,
+    });
+    clearTimeout(timeout1);
+
+    if (!getResponse.ok) {
+      const text = await getResponse.text();
+      console.error(`[PASSKIT] Member lookup failed: ${getResponse.status} - ${text.substring(0, 200)}`);
+      return false;
+    }
+
+    const member = await getResponse.json();
+    const memberId = member.id;
+    console.log(`[PASSKIT] Found member: ${memberId}`);
+
+    // Step 2: memberIdで削除
+    const controller2 = new AbortController();
+    const timeout2 = setTimeout(() => controller2.abort(), 5000);
+
+    const deleteResponse = await fetch(`${baseUrl}/members/member/${memberId}`, {
       method: 'DELETE',
       headers: { 'Authorization': token },
-      signal: controller.signal,
+      signal: controller2.signal,
     });
-    clearTimeout(timeout);
-    const text = await response.text();
-    console.log(`[PASSKIT] Delete response: ${response.status} - ${text.substring(0, 200)}`);
-    return response.ok;
+    clearTimeout(timeout2);
+
+    const deleteText = await deleteResponse.text();
+    console.log(`[PASSKIT] Delete response: ${deleteResponse.status} - ${deleteText.substring(0, 200)}`);
+    return deleteResponse.ok;
   } catch (err) {
-    clearTimeout(timeout);
     console.error(`[PASSKIT] Delete failed: ${err.message}`);
     return false;
   }

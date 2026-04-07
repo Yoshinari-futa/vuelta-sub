@@ -121,15 +121,16 @@ module.exports = async function handler(req, res) {
         const walletUrl = `https://${region}.pskt.io/${member.id}`;
         steps.push({ step: 'SUCCESS', memberId: member.id, walletUrl });
 
-        // テストメンバーを削除
+        // テストメンバーを削除（memberIdで削除）
         try {
-          const delRes = await fetch(`${passkitHost}/members/member/external/${programId}/${testExternalId}`, {
+          const delRes = await fetch(`${passkitHost}/members/member/${member.id}`, {
             method: 'DELETE',
             headers: { 'Authorization': token },
           });
-          steps.push({ step: 'cleanup', deleted: delRes.ok });
-        } catch (_) {
-          steps.push({ step: 'cleanup', deleted: false });
+          const delText = await delRes.text();
+          steps.push({ step: 'cleanup', deleted: delRes.ok, status: delRes.status, body: delText.substring(0, 200) });
+        } catch (e) {
+          steps.push({ step: 'cleanup', deleted: false, error: e.message });
         }
       }
     } catch (err) {
