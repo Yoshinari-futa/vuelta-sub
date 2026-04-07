@@ -122,7 +122,12 @@ async function generatePassKitCard({ email, name, customerId, tierId }) {
       body: JSON.stringify({
         programId,
         tierId,
-        person: { displayName: name, externalId: customerId },
+        person: {
+          displayName: name,
+          emailAddress: email,
+          forenames: name.split(' ')[0],
+          surname: name.split(' ').slice(1).join(' ') || name,
+        },
         externalId: customerId,
         points: 0,
         tierPoints: 0,
