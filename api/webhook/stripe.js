@@ -54,14 +54,48 @@ function getPassKitAuth() {
 }
 
 // PassKit会員証削除（解約時）
-// 手順: externalIdでメンバー検索 → memberIdを取得 → memberIdで削除
+// 3つの方法を順に試行: externalId直接削除 → programId+externalId削除 → 検索してID削除
 async function deletePassKitMember(externalId) {
   const { token, baseUrl } = getPassKitAuth();
   const programId = process.env.PASSKIT_PROGRAM_ID;
   console.log(`[PASSKIT] Deleting member: externalId=${externalId}, programId=${programId}`);
 
+  const attempts = [
+    // 方法1: externalIdとprogramIdで直接削除
+    { name: 'externalId+programId', body: { externalId, programId } },
+    // 方法2: externalIdのみで削除
+    { name: 'externalId only', body: { externalId } },
+  ];
+
+  for (const attempt of attempts) {
+    try {
+      console.log(`[PASSKIT] Trying delete: ${attempt.name}`);
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 5000);
+
+      const resp = await fetch(`${baseUrl}/members/member`, {
+        method: 'DELETE',
+        headers: { 'Authorization': token, 'Content-Type': 'application/json' },
+        body: JSON.stringify(attempt.body),
+        signal: controller.signal,
+      });
+      clearTimeout(timeout);
+
+      const text = await resp.text();
+      console.log(`[PASSKIT] ${attempt.name}: ${resp.status} - ${text.substring(0, 200)}`);
+
+      if (resp.ok) {
+        console.log(`[PASSKIT] Delete SUCCESS via ${attempt.name}`);
+        return true;
+      }
+    } catch (err) {
+      console.error(`[PASSKIT] ${attempt.name} error: ${err.message}`);
+    }
+  }
+
+  // 方法3: GET検索 → ID削除（フォールバック）
   try {
-    // Step 1: externalIdでメンバーを検索してmemberIdを取得
+    console.log(`[PASSKIT] Trying fallback: GET lookup then delete`);
     const controller1 = new AbortController();
     const timeout1 = setTimeout(() => controller1.abort(), 5000);
 
@@ -72,35 +106,34 @@ async function deletePassKitMember(externalId) {
     });
     clearTimeout(timeout1);
 
-    if (!getResponse.ok) {
+    if (getResponse.ok) {
+      const member = await getResponse.json();
+      console.log(`[PASSKIT] Found member: ${member.id}`);
+
+      const controller2 = new AbortController();
+      const timeout2 = setTimeout(() => controller2.abort(), 5000);
+
+      const delResp = await fetch(`${baseUrl}/members/member`, {
+        method: 'DELETE',
+        headers: { 'Authorization': token, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: member.id }),
+        signal: controller2.signal,
+      });
+      clearTimeout(timeout2);
+
+      const delText = await delResp.text();
+      console.log(`[PASSKIT] Fallback delete: ${delResp.status} - ${delText.substring(0, 200)}`);
+      return delResp.ok;
+    } else {
       const text = await getResponse.text();
-      console.error(`[PASSKIT] Member lookup failed: ${getResponse.status} - ${text.substring(0, 200)}`);
-      return false;
+      console.error(`[PASSKIT] Fallback lookup failed: ${getResponse.status} - ${text.substring(0, 200)}`);
     }
-
-    const member = await getResponse.json();
-    const memberId = member.id;
-    console.log(`[PASSKIT] Found member: ${memberId}`);
-
-    // Step 2: memberIdで削除（ボディにIDを渡す方式 — PassKit REST APIの正しいパターン）
-    const controller2 = new AbortController();
-    const timeout2 = setTimeout(() => controller2.abort(), 5000);
-
-    const deleteResponse = await fetch(`${baseUrl}/members/member`, {
-      method: 'DELETE',
-      headers: { 'Authorization': token, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id: memberId }),
-      signal: controller2.signal,
-    });
-    clearTimeout(timeout2);
-
-    const deleteText = await deleteResponse.text();
-    console.log(`[PASSKIT] Delete response: ${deleteResponse.status} - ${deleteText.substring(0, 200)}`);
-    return deleteResponse.ok;
   } catch (err) {
-    console.error(`[PASSKIT] Delete failed: ${err.message}`);
-    return false;
+    console.error(`[PASSKIT] Fallback error: ${err.message}`);
   }
+
+  console.error(`[PASSKIT] All delete methods failed for externalId=${externalId}`);
+  return false;
 }
 
 // PassKit会員証生成（タイムアウト付き）

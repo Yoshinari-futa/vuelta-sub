@@ -121,10 +121,10 @@ module.exports = async function handler(req, res) {
         const walletUrl = `https://${region}.pskt.io/${member.id}`;
         steps.push({ step: 'SUCCESS', memberId: member.id, walletUrl });
 
-        // テストメンバーを削除 — 複数のAPIパターンを試す
+        // テストメンバーを削除 — 複数のAPIパターンを試す（externalId方式も追加）
         const deleteAttempts = [
-          { name: 'DELETE /member/{id}', method: 'DELETE', url: `${passkitHost}/members/member/${member.id}`, body: null },
-          { name: 'DELETE /member body:{id}', method: 'DELETE', url: `${passkitHost}/members/member`, body: JSON.stringify({ id: member.id }) },
+          { name: 'DELETE body:{externalId,programId}', method: 'DELETE', url: `${passkitHost}/members/member`, body: JSON.stringify({ externalId: testExternalId, programId }) },
+          { name: 'DELETE body:{id}', method: 'DELETE', url: `${passkitHost}/members/member`, body: JSON.stringify({ id: member.id }) },
           { name: 'PUT expire', method: 'PUT', url: `${passkitHost}/members/member`, body: JSON.stringify({ id: member.id, expiryDate: '2020-01-01T00:00:00Z', optOut: true }) },
         ];
 
