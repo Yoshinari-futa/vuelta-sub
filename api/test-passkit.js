@@ -98,6 +98,11 @@ module.exports = async function handler(req, res) {
         externalId: testExternalId,
         points: 0,
         tierPoints: 0,
+        passOverrides: {
+          imageIds: {
+            strip: '1KtkahvCl3rLRgLmxhxkaM',
+          },
+        },
       };
       steps.push({ step: 'create_request', body: bodyWithTier });
 

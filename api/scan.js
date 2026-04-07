@@ -58,18 +58,37 @@ module.exports = async function handler(req, res) {
     if (!host.startsWith('http')) host = 'https://' + host;
     const baseUrl = host.replace(/\/$/, '');
 
-    // 1. メンバー情報を取得
+    // 1. メンバー情報を取得（memberIdで試す → 失敗したらexternalIdとして検索）
+    const programId = process.env.PASSKIT_PROGRAM_ID;
+    let member = null;
+
+    // 1a: memberId として直接取得
     const getRes = await fetch(`${baseUrl}/members/member/${memberId}`, {
       headers: { 'Authorization': token },
     });
 
-    if (!getRes.ok) {
-      const errText = await getRes.text();
-      console.error(`[SCAN] GET member failed: ${getRes.status} - ${errText.substring(0, 200)}`);
-      return res.status(404).json({ error: 'Member not found', detail: errText.substring(0, 100) });
-    }
+    if (getRes.ok) {
+      member = await getRes.json();
+      console.log(`[SCAN] Found by memberId: ${memberId}`);
+    } else {
+      console.log(`[SCAN] memberId lookup failed (${getRes.status}), trying externalId...`);
 
-    const member = await getRes.json();
+      // 1b: externalId として検索（バーコードにexternalIdが入っている場合）
+      const extRes = await fetch(`${baseUrl}/members/member/external/${programId}/${memberId}`, {
+        headers: { 'Authorization': token },
+      });
+
+      if (extRes.ok) {
+        member = await extRes.json();
+        console.log(`[SCAN] Found by externalId: ${memberId} → internal id: ${member.id}`);
+      } else {
+        console.error(`[SCAN] Both lookups failed for: ${memberId}`);
+        return res.status(404).json({
+          error: 'Member not found',
+          tried: { memberId, externalId: `${programId}/${memberId}` },
+        });
+      }
+    }
     const currentPoints = member.points || 0;
     const newPoints = currentPoints + 1;
     const displayName = member.person?.displayName || 'Member';
@@ -81,8 +100,8 @@ module.exports = async function handler(req, res) {
       method: 'PUT',
       headers: { 'Authorization': token, 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        id: memberId,
-        programId: process.env.PASSKIT_PROGRAM_ID,
+        id: member.id,
+        programId: programId,
         points: newPoints,
       }),
     });

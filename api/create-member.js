@@ -58,6 +58,11 @@ module.exports = async function handler(req, res) {
         externalId: extId,
         points: 0,
         tierPoints: 0,
+        passOverrides: {
+          imageIds: {
+            strip: '1KtkahvCl3rLRgLmxhxkaM',
+          },
+        },
       }),
       signal: controller.signal,
     });

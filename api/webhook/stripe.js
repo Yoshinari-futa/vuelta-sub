@@ -187,6 +187,11 @@ async function generatePassKitCard({ email, name, customerId, tierId }) {
         externalId: customerId,
         points: 0,
         tierPoints: 0,
+        passOverrides: {
+          imageIds: {
+            strip: '1KtkahvCl3rLRgLmxhxkaM',
+          },
+        },
       }),
       signal: controller.signal,
     });
