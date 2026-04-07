@@ -170,8 +170,15 @@
   const pinBtn = document.getElementById('pinBtn');
   const pinError = document.getElementById('pinError');
 
+  // URLパラメータにpin=xxxxがあればPIN画面スキップ
+  const urlPin = new URLSearchParams(window.location.search).get('pin');
+  if (urlPin) {
+    staffPin = urlPin;
+    sessionStorage.setItem(PIN_KEY, staffPin);
+  }
+
   if (staffPin) {
-    // 保存済みPINもサーバーで再検証
+    // 保存済み or URLのPINをサーバーで検証
     fetch('/scan?secret=' + encodeURIComponent(staffPin))
       .then(r => r.json())
       .then(d => {
