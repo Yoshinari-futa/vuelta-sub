@@ -45,7 +45,8 @@
     },
     {
       "src": "/scanner",
-      "dest": "/public/scanner.html"
+      "dest": "/public/scanner.html",
+      "headers": { "Cache-Control": "no-cache, no-store, must-revalidate" }
     },
     {
       "src": "/thanks",
@@ -66,6 +67,10 @@
     {
       "src": "/setup-strip-image",
       "dest": "/api/setup-strip-image.js"
+    },
+    {
+      "src": "/list-members",
+      "dest": "/api/list-members.js"
     }
   ]
 }

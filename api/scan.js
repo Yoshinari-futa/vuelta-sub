@@ -39,7 +39,7 @@ module.exports = async function handler(req, res) {
     return res.status(400).json({ error: 'memberId is required' });
   }
 
-  console.log(`[SCAN] memberId=${memberId}`);
+  console.log(`[SCAN] id=${memberId} len=${memberId.length}`);
 
   try {
     // PassKit認証
