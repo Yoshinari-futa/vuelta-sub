@@ -316,7 +316,12 @@
           nameEl.textContent = 'エラー';
           visitsEl.textContent = '—';
           document.getElementById('rVisitsLabel').textContent = '';
-          msgEl.textContent = data.error || 'スキャンに失敗しました';
+          let errMsg = data.error || 'スキャンに失敗しました';
+          if (data.scannedValue) errMsg += '\n[scanned: ' + data.scannedValue + ']';
+          if (data.programId) errMsg += '\n[program: ' + data.programId + ']';
+          msgEl.style.whiteSpace = 'pre-wrap';
+          msgEl.style.fontSize = '11px';
+          msgEl.textContent = errMsg;
         }
       }
 
