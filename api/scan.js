@@ -82,10 +82,21 @@ module.exports = async function handler(req, res) {
         member = await extRes.json();
         console.log(`[SCAN] Found by externalId: ${memberId} → internal id: ${member.id}`);
       } else {
-        console.error(`[SCAN] Both lookups failed for: ${memberId}`);
+        const extErrText = await extRes.text();
+        console.error(`[SCAN] Both lookups failed for: ${memberId}, extRes: ${extRes.status} ${extErrText.substring(0, 200)}`);
+
+        // 1c: バーコード値の前後をトリムしたり、エンコーディングの問題を確認
+        console.error(`[SCAN] Raw barcode value (length=${memberId.length}): "${memberId}"`);
+
         return res.status(404).json({
           error: 'Member not found',
-          tried: { memberId, externalId: `${programId}/${memberId}` },
+          scannedValue: memberId,
+          scannedLength: memberId.length,
+          tried: {
+            memberIdUrl: `${baseUrl}/members/member/${memberId}`,
+            externalIdUrl: `${baseUrl}/members/member/external/${programId}/${memberId}`,
+          },
+          programId,
         });
       }
     }
