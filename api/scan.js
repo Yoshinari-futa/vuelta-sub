@@ -36,10 +36,22 @@ module.exports = async function handler(req, res) {
   }
 
   if (!memberId) {
-    return res.status(400).json({ error: 'memberId is required' });
+    return res.status(400).json({
+      error: 'memberId is required',
+      rawBody: JSON.stringify(req.body).substring(0, 200),
+    });
   }
 
-  console.log(`[SCAN] id=${memberId} len=${memberId.length}`);
+  // URL形式の場合、IDを抽出（クライアント側でも処理するが、念のため二重チェック）
+  let cleanId = memberId.trim();
+  const urlMatch = cleanId.match(/pskt\.io\/(?:c\/)?([A-Za-z0-9_-]{10,})/);
+  if (urlMatch) cleanId = urlMatch[1];
+  // 一般URL末尾のID
+  const pathMatch = cleanId.match(/\/([A-Za-z0-9_-]{15,})(?:\?|$)/);
+  if (!urlMatch && pathMatch) cleanId = pathMatch[1];
+
+  console.log(`[SCAN] raw="${memberId}" clean="${cleanId}" len=${cleanId.length}`);
+  memberId = cleanId;
 
   try {
     // PassKit認証
@@ -95,6 +107,7 @@ module.exports = async function handler(req, res) {
     }
 
     // 1c: list APIでプログラム全メンバーから検索（直接GETが404になるケースの回避策）
+    let allMembers = [];
     if (!member) {
       console.log(`[SCAN] Trying list fallback for: ${memberId}`);
       try {
@@ -105,19 +118,19 @@ module.exports = async function handler(req, res) {
         });
         if (listRes.ok) {
           const listText = await listRes.text();
-          // PassKit list API はnewline-delimited JSON（各行が {result: {...}} ）
           const lines = listText.trim().split('\n');
           for (const line of lines) {
             try {
               const parsed = JSON.parse(line);
               const m = parsed.result || parsed;
+              if (m.id) allMembers.push(m);
               if (m.id === memberId || m.externalId === memberId || m.passMetaData?.altId === memberId) {
                 member = m;
                 console.log(`[SCAN] Found by list search: ${memberId} → ${m.person?.displayName || m.person?.surname || 'Member'}`);
-                break;
               }
             } catch (_) {}
           }
+          console.log(`[SCAN] List returned ${allMembers.length} members`);
         }
       } catch (e) {
         console.log(`[SCAN] list fallback error: ${e.message}`);
@@ -125,12 +138,20 @@ module.exports = async function handler(req, res) {
     }
 
     if (!member) {
-      console.error(`[SCAN] All lookups failed for: ${memberId} (length=${memberId.length})`);
+      // デバッグ: 全メンバーのIDリストを出力
+      const memberIds = allMembers.map(m => ({
+        id: m.id,
+        extId: m.externalId || '',
+        altId: m.passMetaData?.altId || '',
+        name: m.person?.displayName || [m.person?.forename, m.person?.surname].filter(Boolean).join(' ') || '?',
+      }));
+      console.error(`[SCAN] All lookups failed for: "${memberId}" (len=${memberId.length}). Members in program: ${JSON.stringify(memberIds)}`);
       return res.status(404).json({
         error: 'Member not found',
         scannedValue: memberId,
         scannedLength: memberId.length,
         programId,
+        existingMembers: memberIds,
       });
     }
     const currentPoints = member.points || 0;

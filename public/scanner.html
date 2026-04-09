@@ -80,6 +80,13 @@
     font-size: 12px; color: #666; letter-spacing: 0.04em;
   }
 
+  /* ── Debug ── */
+  .debug {
+    width: 100%; max-width: 400px; padding: 4px 16px;
+    font-size: 10px; color: #555; word-break: break-all;
+    text-align: center; min-height: 16px;
+  }
+
   /* ── Result ── */
   .result {
     width: 100%; max-width: 400px; padding: 0 16px;
@@ -143,7 +150,8 @@
     <div class="corner br"></div>
   </div>
 </div>
-<div class="hint" id="hint">Wallet の QR コードをかざしてください</div>
+<div class="hint" id="hint">バーコードをかざしてください</div>
+<div class="debug" id="debug"></div>
 
 <div class="result" id="result">
   <div class="result-card" id="resultCard">
@@ -163,6 +171,12 @@
   let staffPin = sessionStorage.getItem(PIN_KEY) || '';
   let scanning = false;
   let html5QrCode = null;
+  const debugEl = document.getElementById('debug');
+
+  function dbg(msg) {
+    debugEl.textContent = msg;
+    console.log('[SCANNER] ' + msg);
+  }
 
   // ── PIN認証 ──
   const pinOverlay = document.getElementById('pinOverlay');
@@ -178,7 +192,6 @@
   }
 
   if (staffPin) {
-    // 保存済み or URLのPINをサーバーで検証
     fetch('/scan?secret=' + encodeURIComponent(staffPin))
       .then(r => r.json())
       .then(d => {
@@ -216,16 +229,15 @@
     pinBtn.textContent = 'ENTER';
   }
 
-  // ── カメラ起動 & QR読み取り ──
+  // ── カメラ起動 & バーコード読み取り ──
   async function startCamera() {
     scanning = true;
     document.getElementById('result').classList.remove('show');
     document.getElementById('nextBtn').style.display = 'none';
-    document.getElementById('hint').textContent = 'Wallet の QR コードをかざしてください';
+    document.getElementById('hint').textContent = 'バーコードをかざしてください';
+    dbg('');
 
     const videoEl = document.getElementById('video');
-
-    // html5-qrcode は自身の <video> を使うため、既存 video は隠す
     videoEl.style.display = 'none';
 
     if (html5QrCode) {
@@ -233,7 +245,6 @@
     }
 
     const cameraBox = document.querySelector('.camera-box');
-    // リーダー用 div
     let readerDiv = document.getElementById('qr-reader');
     if (!readerDiv) {
       readerDiv = document.createElement('div');
@@ -243,12 +254,30 @@
       cameraBox.insertBefore(readerDiv, cameraBox.firstChild);
     }
 
-    html5QrCode = new Html5Qrcode('qr-reader');
+    // PDF417, QR, Aztec, DataMatrix 等すべてのフォーマットを明示的にサポート
+    const formats = [
+      Html5QrcodeSupportedFormats.QR_CODE,
+      Html5QrcodeSupportedFormats.PDF_417,
+      Html5QrcodeSupportedFormats.AZTEC,
+      Html5QrcodeSupportedFormats.DATA_MATRIX,
+      Html5QrcodeSupportedFormats.CODE_128,
+      Html5QrcodeSupportedFormats.CODE_39,
+      Html5QrcodeSupportedFormats.EAN_13,
+    ];
+
+    html5QrCode = new Html5Qrcode('qr-reader', { formatsToSupport: formats, verbose: false });
 
     try {
       await html5QrCode.start(
         { facingMode: 'environment' },
-        { fps: 10, qrbox: (w, h) => ({ width: Math.floor(Math.min(w, h) * 0.7), height: Math.floor(Math.min(w, h) * 0.7) }) },
+        {
+          fps: 10,
+          qrbox: (w, h) => ({
+            width: Math.floor(Math.min(w, h) * 0.8),
+            height: Math.floor(Math.min(w, h) * 0.5),
+          }),
+          aspectRatio: 1.0,
+        },
         onScanSuccess,
         () => {} // ignore failures
       );
@@ -261,14 +290,37 @@
       // ライブラリが生成する装飾を隠す
       const scanRegion = document.getElementById('qr-shaded-region');
       if (scanRegion) scanRegion.style.display = 'none';
+      dbg('カメラ起動OK');
     } catch (err) {
       document.getElementById('hint').textContent = 'カメラを許可してください';
+      dbg('Camera error: ' + err);
       console.error('Camera error:', err);
     }
   }
 
+  // ── バーコードの値からメンバーIDを抽出 ──
+  function extractMemberId(raw) {
+    if (!raw) return '';
+    let val = raw.trim();
+
+    // PassKit URL形式: https://pub2.pskt.io/c/MEMBER_ID or https://pub2.pskt.io/MEMBER_ID
+    // 末尾のパスセグメント（英数字22文字前後のPassKit ID）を取る
+    const urlMatch = val.match(/pskt\.io\/(?:c\/)?([A-Za-z0-9_-]{10,})/);
+    if (urlMatch) return urlMatch[1];
+
+    // 一般URL: 末尾パスからIDっぽい文字列を取る
+    const pathMatch = val.match(/\/([A-Za-z0-9_-]{15,})(?:\?|$)/);
+    if (pathMatch) return pathMatch[1];
+
+    // URL全体ではなく、英数字のIDそのもの
+    if (/^[A-Za-z0-9_-]{10,}$/.test(val)) return val;
+
+    // それ以外はそのまま返す（サーバー側で対処）
+    return val;
+  }
+
   // ── スキャン成功 ──
-  async function onScanSuccess(decodedText) {
+  async function onScanSuccess(decodedText, decodedResult) {
     if (!scanning) return;
     scanning = false;
 
@@ -277,19 +329,25 @@
 
     try { await html5QrCode.stop(); } catch (_) {}
 
+    // デコード結果をデバッグ表示
+    const format = decodedResult?.result?.format?.formatName || 'unknown';
+    dbg('format=' + format + ' raw=' + decodedText);
+
     document.getElementById('hint').textContent = '確認中...';
 
-    // QRコードの中身から memberId を抽出
-    // PassKit QR は通常 URL（https://pub2.pskt.io/MEMBER_ID）か、直接 ID
-    let memberId = decodedText.trim();
-    const psktMatch = memberId.match(/pskt\.io\/([A-Za-z0-9]+)/);
-    if (psktMatch) memberId = psktMatch[1];
+    const memberId = extractMemberId(decodedText);
+    dbg('format=' + format + ' id=' + memberId);
+
+    if (!memberId) {
+      showError('バーコードの値を読み取れませんでした', 'raw: ' + decodedText);
+      return;
+    }
 
     try {
       const resp = await fetch('/scan', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ memberId, secret: staffPin }),
+        body: JSON.stringify({ memberId: memberId, secret: staffPin }),
       });
       const data = await resp.json();
 
@@ -317,8 +375,8 @@
           visitsEl.textContent = '—';
           document.getElementById('rVisitsLabel').textContent = '';
           let errMsg = data.error || 'スキャンに失敗しました';
+          errMsg += '\n[id: ' + memberId + ']';
           if (data.scannedValue) errMsg += '\n[scanned: ' + data.scannedValue + ']';
-          if (data.programId) errMsg += '\n[program: ' + data.programId + ']';
           msgEl.style.whiteSpace = 'pre-wrap';
           msgEl.style.fontSize = '11px';
           msgEl.textContent = errMsg;
@@ -330,9 +388,24 @@
       document.getElementById('hint').textContent = '';
 
     } catch (err) {
-      document.getElementById('hint').textContent = '通信エラー: ' + err.message;
-      setTimeout(() => startCamera(), 2000);
+      showError('通信エラー', err.message);
+      setTimeout(() => resetScan(), 3000);
     }
+  }
+
+  function showError(title, detail) {
+    const card = document.getElementById('resultCard');
+    card.className = 'result-card error';
+    document.getElementById('rName').textContent = title;
+    document.getElementById('rVisits').textContent = '—';
+    document.getElementById('rVisitsLabel').textContent = '';
+    const msgEl = document.getElementById('rMsg');
+    msgEl.style.whiteSpace = 'pre-wrap';
+    msgEl.style.fontSize = '11px';
+    msgEl.textContent = detail || '';
+    document.getElementById('result').classList.add('show');
+    document.getElementById('nextBtn').style.display = 'block';
+    document.getElementById('hint').textContent = '';
   }
 
   function resetScan() {
