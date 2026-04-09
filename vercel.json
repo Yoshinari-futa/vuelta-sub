@@ -1,5 +1,11 @@
 {
   "version": 2,
+  "crons": [
+    {
+      "path": "/api/remind-inactive",
+      "schedule": "0 15 * * *"
+    }
+  ],
   "builds": [
     {
       "src": "api/**/*.js",
