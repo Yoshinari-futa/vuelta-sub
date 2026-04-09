@@ -137,21 +137,27 @@ module.exports = async function handler(req, res) {
       }
 
       // パス更新 → Apple Wallet がプッシュ通知を自動送信
-      // metaData だけでなく passOverrides で表示内容を変えることで通知トリガー
+      // secondaryPoints を変更して表示フィールドを更新 + relevantDate で通知トリガー
+      const now = new Date();
       const updateBody = {
         id: m.id,
         programId: m.programId || programId,
+        // secondaryPoints を現在epoch秒で更新（表示フィールドの値変更）
+        secondaryPoints: Math.floor(now.getTime() / 1000),
         metaData: {
           ...meta,
-          reminderSent: new Date().toISOString(),
+          reminderSent: now.toISOString(),
           reminderMessage: REMIND_MESSAGE_EN,
         },
         passOverrides: {
+          // relevantDate: 現在時刻 → Apple Wallet が「今関連がある」と判断し通知
+          relevantDate: now.toISOString(),
           backFields: [
             {
               key: 'reminder',
               label: 'Message from VUELTA',
               value: REMIND_MESSAGE_EN,
+              changeMessage: 'VUELTA: %@',
             },
           ],
         },
