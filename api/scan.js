@@ -5,11 +5,20 @@
  *
  * 来店回数に応じたティア（カード色）:
  *   PASSKIT_TIER_VISIT_TIERS_ENABLED が false のときは従来どおり tier を変えない。
- *   それ以外では VISITS_MIN_* と PASSKIT_TIER_ID_* で白→銀→金→黒を切替。
+ *   それ以外では VISITS_MIN_* と PASSKIT_TIER_ID_WHITE/SILVER/GOLD/BLACK で白→銀→金→黒を切替。
  *   PassKit 側で各 tierId に色違いテンプレを紐づけておくこと。
+ *
+ *   重要: PASSKIT_TIER_ID（Stripe 入会時のデフォルト tier）は来店ラダーに使わない。
+ *   デフォルトの tier 実IDは passkit-tier-ids.js（上書きは PASSKIT_TIER_ID_WHITE 等）。
  */
 
 const jwt = require('jsonwebtoken');
+const {
+  TIER_BASE,
+  TIER_SILVER,
+  TIER_GOLD,
+  TIER_BLACK,
+} = require('./passkit-tier-ids');
 
 /** PassKit list API のレスポンス（NDJSON / 単一JSON / 配列）を配列に統一 */
 function parseMemberListResponse(text) {
@@ -61,17 +70,60 @@ function extractIdFromScannedString(raw) {
   return val;
 }
 
+/**
+ * PassKit の points（来店回数）を数に正規化する。
+ * 文字列のまま +1 すると "1"+1="11" になり、次回 "11"+1="111" と壊れる。
+ * NaN / 負数は 0 に丸める（NaN だと tier 判定が全部偽になり常にブラックになる）。
+ */
+function parseVisitCount(raw) {
+  if (raw == null || raw === '') return 0;
+  const n = Number(raw);
+  if (!Number.isFinite(n) || n < 0) return 0;
+  return Math.min(Math.floor(n), 1e6);
+}
+
+/** PassKit の来店ラダー用 tierId（PASSKIT_TIER_ID は含めない — 入会デフォルトと混ざるため） */
+function getVisitTierIds() {
+  return {
+    white: (process.env.PASSKIT_TIER_ID_WHITE || TIER_BASE).trim(),
+    silver: (process.env.PASSKIT_TIER_ID_SILVER || TIER_SILVER).trim(),
+    gold: (process.env.PASSKIT_TIER_ID_GOLD || TIER_GOLD).trim(),
+    black: (process.env.PASSKIT_TIER_ID_BLACK || TIER_BLACK).trim(),
+  };
+}
+
+/**
+ * VISITS_MIN_FOR_* は「そのランクに上がる来店回数の下限」（未満は一段下）。
+ * 必ず minSilver < minGold < minBlack。壊れた組み合わせはデフォルトにフォールバック。
+ */
+function getVisitTierThresholds() {
+  const defS = 3;
+  const defG = 10;
+  const defB = 20;
+  const parseMin = (key, fallback) => {
+    const n = parseInt(String(process.env[key] ?? '').trim(), 10);
+    return Number.isFinite(n) && n >= 1 ? n : fallback;
+  };
+  let minSilver = parseMin('VISITS_MIN_FOR_SILVER', defS);
+  let minGold = parseMin('VISITS_MIN_FOR_GOLD', defG);
+  let minBlack = parseMin('VISITS_MIN_FOR_BLACK', defB);
+  if (!(minSilver < minGold && minGold < minBlack)) {
+    console.warn(
+      `[SCAN] VISITS_MIN_FOR_* invalid (${minSilver}, ${minGold}, ${minBlack}); need strict minSilver < minGold < minBlack — using ${defS}, ${defG}, ${defB}`
+    );
+    minSilver = defS;
+    minGold = defG;
+    minBlack = defB;
+  }
+  return { minSilver, minGold, minBlack };
+}
+
 /** 来店回数（= points）に応じた tierId。PassKit の tier id はプログラム内で一意・小文字推奨 */
 function tierIdForVisitCount(visits) {
-  const white = process.env.PASSKIT_TIER_ID_WHITE || process.env.PASSKIT_TIER_ID || 'base';
-  const silver = process.env.PASSKIT_TIER_ID_SILVER || 'silver';
-  const gold = process.env.PASSKIT_TIER_ID_GOLD || 'gold';
-  const black = process.env.PASSKIT_TIER_ID_BLACK || 'black';
-  const minSilver = parseInt(String(process.env.VISITS_MIN_FOR_SILVER || '3').trim(), 10) || 3;
-  const minGold = parseInt(String(process.env.VISITS_MIN_FOR_GOLD || '10').trim(), 10) || 10;
-  const minBlack = parseInt(String(process.env.VISITS_MIN_FOR_BLACK || '20').trim(), 10) || 20;
+  const { white, silver, gold, black } = getVisitTierIds();
+  const { minSilver, minGold, minBlack } = getVisitTierThresholds();
 
-  const v = Number(visits);
+  const v = parseVisitCount(visits);
   if (v < minSilver) return white;
   if (v < minGold) return silver;
   if (v < minBlack) return gold;
@@ -79,10 +131,7 @@ function tierIdForVisitCount(visits) {
 }
 
 function tierColorLabel(tierId) {
-  const white = process.env.PASSKIT_TIER_ID_WHITE || process.env.PASSKIT_TIER_ID || 'base';
-  const silver = process.env.PASSKIT_TIER_ID_SILVER || 'silver';
-  const gold = process.env.PASSKIT_TIER_ID_GOLD || 'gold';
-  const black = process.env.PASSKIT_TIER_ID_BLACK || 'black';
+  const { white, silver, gold, black } = getVisitTierIds();
   if (tierId === white) return 'white';
   if (tierId === silver) return 'silver';
   if (tierId === gold) return 'gold';
@@ -281,11 +330,16 @@ module.exports = async function handler(req, res) {
         existingMembers: memberIds,
       });
     }
-    const currentPoints = member.points || 0;
+    const currentPoints = parseVisitCount(member.points);
     const newPoints = currentPoints + 1;
     const p = member.person || {};
     const displayName = p.displayName || [p.forename, p.surname].filter(Boolean).join(' ') || 'Member';
 
+    if (String(member.points) !== String(currentPoints) && member.points != null) {
+      console.warn(
+        `[SCAN] points normalized: raw=${JSON.stringify(member.points)} → ${currentPoints} (next ${newPoints})`
+      );
+    }
     console.log(`[SCAN] ${displayName}: points ${currentPoints} → ${newPoints}`);
 
     const visitTiersOn = String(process.env.PASSKIT_TIER_VISIT_TIERS_ENABLED || 'true').toLowerCase() !== 'false';
@@ -323,11 +377,15 @@ module.exports = async function handler(req, res) {
       member: displayName,
       visits: newPoints,
       message: `${displayName}さん ${newPoints}回目の来店！`,
+      visitTiersEnabled: visitTiersOn,
     };
     if (visitTiersOn) {
       out.tierId = targetTierId;
       out.tierColor = tierColorLabel(targetTierId);
       out.tierChanged = targetTierId !== member.tierId;
+    } else {
+      out.tierNote =
+        'PASSKIT_TIER_VISIT_TIERS_ENABLED が false のため、PassKit の tierId は更新されません（入会時の色のまま）。';
     }
     return res.status(200).json(out);
 

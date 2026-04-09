@@ -7,6 +7,7 @@
  *   0=DO_NOT_USE, 1=QR, 2=AZTEC, 3=PDF417, 4=CODE128, 5=TEXT, 6=DATA_MATRIX
  */
 const jwt = require('jsonwebtoken');
+const { TIER_BLACK } = require('./passkit-tier-ids');
 
 module.exports = async function handler(req, res) {
   if (req.method !== 'POST') {
@@ -36,7 +37,7 @@ module.exports = async function handler(req, res) {
   host = host.replace(/\/$/, '');
 
   const programId = process.env.PASSKIT_PROGRAM_ID;
-  const tierId = process.env.PASSKIT_TIER_ID || 'black';
+  const tierId = process.env.PASSKIT_TIER_ID || TIER_BLACK;
   const steps = [];
   const QR_TYPE = 1; // PKBarcodeFormatQR
 

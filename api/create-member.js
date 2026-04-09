@@ -6,6 +6,7 @@
 
 const nodemailer = require('nodemailer');
 const jwt = require('jsonwebtoken');
+const { TIER_BASE } = require('./passkit-tier-ids');
 
 module.exports = async function handler(req, res) {
   if (req.method !== 'POST') {
@@ -31,7 +32,7 @@ module.exports = async function handler(req, res) {
     if (!passkitHost.startsWith('http')) passkitHost = 'https://' + passkitHost;
     const passkitBaseUrl = passkitHost.replace(/\/$/, '');
     const programId = process.env.PASSKIT_PROGRAM_ID;
-    const tierId = process.env.PASSKIT_TIER_ID || 'base';
+    const tierId = process.env.PASSKIT_TIER_ID || TIER_BASE;
     const apiKeyId = (process.env.PASSKIT_API_KEY || '').trim();
     const apiKeySecret = (process.env.PASSKIT_API_KEY_SECRET || '').trim();
 

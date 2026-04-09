@@ -8,6 +8,7 @@
 const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
 const nodemailer = require('nodemailer');
 const jwt = require('jsonwebtoken');
+const { TIER_BASE } = require('../passkit-tier-ids');
 
 // config は handler に付与（下部参照）
 
@@ -511,7 +512,7 @@ async function handler(req, res) {
           email: customerEmail,
           name: customerName,
           customerId: session.customer || session.id,
-          tierId: process.env.PASSKIT_TIER_ID,
+          tierId: process.env.PASSKIT_TIER_ID || TIER_BASE,
         });
         console.log(`[PASSKIT] SUCCESS: ${walletUrl}`);
       } catch (err) {
