@@ -281,7 +281,7 @@ module.exports = async function handler(req, res) {
           {
             latitude: 34.3893066,
             longitude: 132.4541823,
-            relevantText: 'VUELTAの近くにいます。今夜も一杯いかがですか？',
+            relevantText: 'You're near VUELTA. How about a drink tonight?',
             altitude: 0,
           },
         ],

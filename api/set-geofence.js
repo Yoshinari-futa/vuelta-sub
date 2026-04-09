@@ -13,7 +13,7 @@ const { TIER_BASE, TIER_SILVER, TIER_GOLD, TIER_BLACK, TIER_RAINBOW } = require(
 
 const DEFAULT_LAT = 34.3893066;
 const DEFAULT_LNG = 132.4541823;
-const DEFAULT_RELEVANT_TEXT = 'VUELTAの近くにいます。今夜も一杯いかがですか？';
+const DEFAULT_RELEVANT_TEXT = 'You're near VUELTA. How about a drink tonight?';
 
 const ALL_TIERS = [TIER_BASE, TIER_GOLD, TIER_SILVER, TIER_BLACK, TIER_RAINBOW];
 
