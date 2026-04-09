@@ -38,120 +38,152 @@ module.exports = async function handler(req, res) {
   const programId = process.env.PASSKIT_PROGRAM_ID;
   const tierId = process.env.PASSKIT_TIER_ID || 'black';
   const steps = [];
+  const QR_TYPE = 1; // PKBarcodeFormatQR
 
   try {
-    // Step 1: Get tier to find passTemplateId
+    // Step 1: Get tier
     const tierResp = await fetch(`${host}/members/tier/${programId}/${tierId}`, {
       headers: { 'Authorization': token },
     });
-    const tierText = await tierResp.text();
     let tierData = null;
     if (tierResp.ok) {
-      tierData = JSON.parse(tierText);
-      steps.push({
-        step: 'get_tier',
-        passTemplateId: tierData.passTemplateId || 'NOT_FOUND',
-        tierFields: Object.keys(tierData),
-      });
+      tierData = JSON.parse(await tierResp.text());
+      steps.push({ step: 'get_tier', passTemplateId: tierData.passTemplateId || 'NOT_FOUND' });
     } else {
-      steps.push({ step: 'get_tier_FAILED', status: tierResp.status, body: tierText.substring(0, 500) });
+      steps.push({ step: 'get_tier_FAILED', status: tierResp.status });
     }
 
-    // Step 2: Get program data
+    // Step 2: Get program
     const progResp = await fetch(`${host}/members/program/${programId}`, {
       headers: { 'Authorization': token },
     });
     let progData = null;
     if (progResp.ok) {
       progData = JSON.parse(await progResp.text());
-      steps.push({
-        step: 'get_program',
-        fields: Object.keys(progData),
-        passType: progData.passType,
-        barcodeSettings: progData.barcode || progData.barcodes || progData.barcodeType || 'not_in_program',
-      });
+      steps.push({ step: 'get_program', passType: progData.passType });
     } else {
       steps.push({ step: 'get_program_FAILED', status: progResp.status });
     }
 
-    // Step 3: Get template if available
+    // Step 3: Try multiple template API paths
     const passTemplateId = tierData?.passTemplateId;
     let templateData = null;
     if (passTemplateId) {
-      const tplResp = await fetch(`${host}/template/${passTemplateId}`, {
-        headers: { 'Authorization': token },
-      });
-      if (tplResp.ok) {
-        templateData = JSON.parse(await tplResp.text());
-        steps.push({
-          step: 'get_template',
-          fields: Object.keys(templateData),
-          barcodeType: templateData.barcodeType,
-          barcode: templateData.barcode,
-          barcodes: templateData.barcodes,
-          defaultBarcode: templateData.defaultBarcode,
-          transitType: templateData.transitType,
-        });
-      } else {
-        const tplText = await tplResp.text();
-        steps.push({ step: 'get_template_FAILED', status: tplResp.status, body: tplText.substring(0, 500) });
+      const templatePaths = [
+        `/template/${passTemplateId}`,
+        `/design/template/${passTemplateId}`,
+        `/design/${passTemplateId}`,
+        `/passes/template/${passTemplateId}`,
+      ];
+      for (const path of templatePaths) {
+        try {
+          const resp = await fetch(`${host}${path}`, { headers: { 'Authorization': token } });
+          const text = await resp.text();
+          if (resp.ok) {
+            templateData = JSON.parse(text);
+            steps.push({ step: 'get_template_OK', path, fields: Object.keys(templateData).slice(0, 20) });
+            break;
+          } else {
+            steps.push({ step: 'get_template_try', path, status: resp.status });
+          }
+        } catch (err) {
+          steps.push({ step: 'get_template_try', path, error: err.message });
+        }
       }
     }
 
-    // Step 4: If action is "fix", update barcode to QR (type 1)
     if (action === 'fix') {
-      const QR_TYPE = 1;
+      // Strategy A: Update template (try multiple paths)
+      if (passTemplateId) {
+        const templateBody = templateData
+          ? { ...templateData, barcodeType: QR_TYPE }
+          : { id: passTemplateId, barcodeType: QR_TYPE };
 
-      // 4a: Update template if found
-      if (templateData && passTemplateId) {
-        try {
-          const updatedTemplate = { ...templateData, barcodeType: QR_TYPE };
-          // Also try other possible field names
-          if (templateData.barcode !== undefined) updatedTemplate.barcode = { ...templateData.barcode, format: QR_TYPE };
-          if (templateData.defaultBarcode !== undefined) updatedTemplate.defaultBarcode = QR_TYPE;
-
-          const putResp = await fetch(`${host}/template`, {
-            method: 'PUT',
-            headers: { 'Authorization': token, 'Content-Type': 'application/json' },
-            body: JSON.stringify(updatedTemplate),
-          });
-          const putText = await putResp.text();
-          steps.push({ step: 'update_template', status: putResp.status, ok: putResp.ok, body: putText.substring(0, 800) });
-        } catch (err) {
-          steps.push({ step: 'update_template_ERROR', message: err.message });
+        const putPaths = ['/template', '/design/template', '/design'];
+        for (const path of putPaths) {
+          try {
+            const resp = await fetch(`${host}${path}`, {
+              method: 'PUT',
+              headers: { 'Authorization': token, 'Content-Type': 'application/json' },
+              body: JSON.stringify(templateBody),
+            });
+            const text = await resp.text();
+            steps.push({ step: 'update_template', path, status: resp.status, ok: resp.ok, body: text.substring(0, 500) });
+            if (resp.ok) break;
+          } catch (err) {
+            steps.push({ step: 'update_template', path, error: err.message });
+          }
         }
       }
 
-      // 4b: Update tier with barcodeType
+      // Strategy B: Update tier
       if (tierData) {
         try {
-          const updatedTier = { ...tierData, barcodeType: QR_TYPE };
-          const putResp = await fetch(`${host}/members/tier`, {
+          const resp = await fetch(`${host}/members/tier`, {
             method: 'PUT',
             headers: { 'Authorization': token, 'Content-Type': 'application/json' },
-            body: JSON.stringify(updatedTier),
+            body: JSON.stringify({ ...tierData, barcodeType: QR_TYPE }),
           });
-          const putText = await putResp.text();
-          steps.push({ step: 'update_tier', status: putResp.status, ok: putResp.ok, body: putText.substring(0, 800) });
+          const text = await resp.text();
+          steps.push({ step: 'update_tier', status: resp.status, ok: resp.ok, body: text.substring(0, 500) });
         } catch (err) {
           steps.push({ step: 'update_tier_ERROR', message: err.message });
         }
       }
 
-      // 4c: Update program with barcodeType
+      // Strategy C: Update program
       if (progData) {
         try {
-          const updatedProg = { ...progData, barcodeType: QR_TYPE };
-          const putResp = await fetch(`${host}/members/program`, {
+          const resp = await fetch(`${host}/members/program`, {
             method: 'PUT',
             headers: { 'Authorization': token, 'Content-Type': 'application/json' },
-            body: JSON.stringify(updatedProg),
+            body: JSON.stringify({ ...progData, barcodeType: QR_TYPE }),
           });
-          const putText = await putResp.text();
-          steps.push({ step: 'update_program', status: putResp.status, ok: putResp.ok, body: putText.substring(0, 800) });
+          const text = await resp.text();
+          steps.push({ step: 'update_program', status: resp.status, ok: resp.ok, body: text.substring(0, 500) });
         } catch (err) {
           steps.push({ step: 'update_program_ERROR', message: err.message });
         }
+      }
+
+      // Strategy D: Update each member with passOverrides barcode
+      try {
+        const listResp = await fetch(`${host}/members/member/list/${programId}`, {
+          method: 'POST',
+          headers: { 'Authorization': token, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ limit: 20 }),
+        });
+        if (listResp.ok) {
+          const members = await listResp.json();
+          const arr = members?.passes || members || [];
+          steps.push({ step: 'list_members', count: arr.length });
+
+          for (const m of arr) {
+            try {
+              const resp = await fetch(`${host}/members/member`, {
+                method: 'PUT',
+                headers: { 'Authorization': token, 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  id: m.id,
+                  programId,
+                  passOverrides: {
+                    ...(m.passOverrides || {}),
+                    barcodeType: QR_TYPE,
+                  },
+                }),
+              });
+              const text = await resp.text();
+              const name = m.person?.displayName || m.person?.forenames || m.id;
+              steps.push({ step: 'update_member', name, status: resp.status, ok: resp.ok, snippet: text.substring(0, 200) });
+            } catch (err) {
+              steps.push({ step: 'update_member_ERROR', id: m.id, message: err.message });
+            }
+          }
+        } else {
+          steps.push({ step: 'list_members_FAILED', status: listResp.status });
+        }
+      } catch (err) {
+        steps.push({ step: 'list_members_ERROR', message: err.message });
       }
     }
 
