@@ -34,7 +34,8 @@ module.exports = async function handler(req, res) {
       return res.status(500).json({ error: 'PASSKIT_PROGRAM_ID required' });
     }
 
-    const inactiveDays = parseInt(req.query?.days || '') || INACTIVE_DAYS_DEFAULT;
+    const daysParam = req.query?.days;
+    const inactiveDays = daysParam !== undefined && daysParam !== '' ? parseInt(daysParam) : INACTIVE_DAYS_DEFAULT;
     const dryRun = req.query?.dry === 'true';
     const cutoffDate = new Date(Date.now() - inactiveDays * 24 * 60 * 60 * 1000);
 
