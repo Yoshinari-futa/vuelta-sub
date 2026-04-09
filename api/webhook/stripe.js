@@ -21,6 +21,54 @@ function getRawBody(req) {
   });
 }
 
+// Slack Block Kit の mrkdwn 向け（ユーザー入力のエスケープ）
+function escapeSlackMrkdwn(s) {
+  if (s == null || s === '') return '';
+  return String(s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
+/**
+ * Checkout Session の custom_fields（誕生日・Instagram 等）を { key, label, value } に正規化
+ * @see https://docs.stripe.com/api/checkout/sessions/object
+ */
+function extractCustomFieldsFromSession(session) {
+  const fields = session && session.custom_fields;
+  if (!Array.isArray(fields) || fields.length === 0) return [];
+
+  return fields.map((f) => {
+    const label =
+      (f.label && f.label.type === 'custom' && f.label.custom) ||
+      f.key ||
+      '項目';
+    let value = '';
+    if (f.type === 'text' && f.text && f.text.value != null) {
+      value = String(f.text.value);
+    } else if (f.type === 'numeric' && f.numeric && f.numeric.value != null) {
+      value = String(f.numeric.value);
+    } else if (f.type === 'dropdown' && f.dropdown && f.dropdown.value) {
+      value = String(f.dropdown.value);
+    }
+    return { key: f.key, label, value };
+  });
+}
+
+/** Webhook ペイロードに custom_fields が空のとき、Session を再取得して補完 */
+async function enrichCheckoutSessionWithCustomFields(session) {
+  if (Array.isArray(session.custom_fields) && session.custom_fields.length > 0) {
+    return session;
+  }
+  try {
+    const full = await stripe.checkout.sessions.retrieve(session.id);
+    return full;
+  } catch (e) {
+    console.log('[WEBHOOK] sessions.retrieve (custom_fields):', e.message);
+    return session;
+  }
+}
+
 // メール送信設定
 function getTransporter() {
   const user = process.env.EMAIL_USER;
@@ -343,8 +391,8 @@ async function sendMembershipEmail(transporter, email, name, walletUrl) {
   });
 }
 
-// Slack通知送信
-async function sendSlackNotification({ name, email, walletUrl }) {
+// Slack通知送信（Stripe Checkout の custom_fields を任意で同梱）
+async function sendSlackNotification({ name, email, walletUrl, customFields }) {
   const webhookUrl = process.env.SLACK_WEBHOOK_URL;
   if (!webhookUrl) {
     console.log('[SLACK] Skipped: SLACK_WEBHOOK_URL not set');
@@ -357,34 +405,48 @@ async function sendSlackNotification({ name, email, walletUrl }) {
 
   const walletStatus = walletUrl ? '✅ Wallet発行済' : '⏳ Wallet未発行（証明書未設定）';
 
-  const payload = {
-    blocks: [
-      {
-        type: 'header',
-        text: { type: 'plain_text', text: '🎉 新規 FIRST-DRINK PASS 会員', emoji: true }
-      },
-      {
-        type: 'section',
-        fields: [
-          { type: 'mrkdwn', text: `*氏名*\n${name}` },
-          { type: 'mrkdwn', text: `*メール*\n${email}` },
-        ]
-      },
-      {
-        type: 'section',
-        fields: [
-          { type: 'mrkdwn', text: `*Wallet*\n${walletStatus}` },
-          { type: 'mrkdwn', text: `*登録日時*\n${timeStr}` },
-        ]
-      },
-      {
-        type: 'context',
-        elements: [
-          { type: 'mrkdwn', text: 'Stripe → FIRST-DRINK PASS サブスクリプション ¥1,980/月' }
-        ]
-      }
+  const blocks = [
+    {
+      type: 'header',
+      text: { type: 'plain_text', text: '🎉 新規 FIRST-DRINK PASS 会員', emoji: true }
+    },
+    {
+      type: 'section',
+      fields: [
+        { type: 'mrkdwn', text: `*氏名*\n${escapeSlackMrkdwn(name)}` },
+        { type: 'mrkdwn', text: `*メール*\n${escapeSlackMrkdwn(email)}` },
+      ]
+    },
+    {
+      type: 'section',
+      fields: [
+        { type: 'mrkdwn', text: `*Wallet*\n${walletStatus}` },
+        { type: 'mrkdwn', text: `*登録日時*\n${timeStr}` },
+      ]
+    },
+  ];
+
+  if (Array.isArray(customFields) && customFields.length > 0) {
+    const lines = customFields
+      .map((f) => {
+        const v = f.value && String(f.value).trim() !== '' ? f.value : '（未入力）';
+        return `• *${escapeSlackMrkdwn(f.label)}:* ${escapeSlackMrkdwn(v)}`;
+      })
+      .join('\n');
+    blocks.push({
+      type: 'section',
+      text: { type: 'mrkdwn', text: `*チェックアウト時の追加項目*\n${lines}` },
+    });
+  }
+
+  blocks.push({
+    type: 'context',
+    elements: [
+      { type: 'mrkdwn', text: 'Stripe → FIRST-DRINK PASS サブスクリプション ¥1,980/月' }
     ]
-  };
+  });
+
+  const payload = { blocks };
 
   try {
     const response = await fetch(webhookUrl, {
@@ -424,7 +486,12 @@ async function handler(req, res) {
 
   // ===== 新規決済完了 =====
   if (event.type === 'checkout.session.completed') {
-    const session = event.data.object;
+    const session = await enrichCheckoutSessionWithCustomFields(event.data.object);
+    const customFields = extractCustomFieldsFromSession(session);
+    if (customFields.length > 0) {
+      console.log(`[WEBHOOK] custom_fields (${customFields.length}):`, JSON.stringify(customFields));
+    }
+
     console.log(`[WEBHOOK] Session: customer=${session.customer}, email=${session.customer_email || session.customer_details?.email || 'none'}`);
 
     try {
@@ -453,19 +520,33 @@ async function handler(req, res) {
         const webhookUrl = process.env.SLACK_WEBHOOK_URL;
         if (webhookUrl) {
           try {
+            const failBlocks = [
+              { type: 'header', text: { type: 'plain_text', text: '⚠️ PassKit カード作成失敗', emoji: true } },
+              { type: 'section', fields: [
+                { type: 'mrkdwn', text: `*名前*\n${escapeSlackMrkdwn(customerName)}` },
+                { type: 'mrkdwn', text: `*メール*\n${escapeSlackMrkdwn(customerEmail)}` },
+              ]},
+            ];
+            if (customFields.length > 0) {
+              const lines = customFields
+                .map((f) => {
+                  const v = f.value && String(f.value).trim() !== '' ? f.value : '（未入力）';
+                  return `• *${escapeSlackMrkdwn(f.label)}:* ${escapeSlackMrkdwn(v)}`;
+                })
+                .join('\n');
+              failBlocks.push({
+                type: 'section',
+                text: { type: 'mrkdwn', text: `*チェックアウト時の追加項目*\n${lines}` },
+              });
+            }
+            failBlocks.push({
+              type: 'section',
+              text: { type: 'mrkdwn', text: `*エラー*\n\`${escapeSlackMrkdwn(err.message)}\`\n\n手動で /create-member から再作成してください。` },
+            });
             await fetch(webhookUrl, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                blocks: [
-                  { type: 'header', text: { type: 'plain_text', text: '⚠️ PassKit カード作成失敗', emoji: true } },
-                  { type: 'section', fields: [
-                    { type: 'mrkdwn', text: `*名前*\n${customerName}` },
-                    { type: 'mrkdwn', text: `*メール*\n${customerEmail}` },
-                  ]},
-                  { type: 'section', text: { type: 'mrkdwn', text: `*エラー*\n\`${err.message}\`\n\n手動で /create-member から再作成してください。` } },
-                ]
-              }),
+              body: JSON.stringify({ blocks: failBlocks }),
             });
           } catch (slackErr) {
             console.error(`[SLACK] Warning notification failed: ${slackErr.message}`);
@@ -489,7 +570,7 @@ async function handler(req, res) {
 
       // Slack通知
       try {
-        await sendSlackNotification({ name: customerName, email: customerEmail, walletUrl });
+        await sendSlackNotification({ name: customerName, email: customerEmail, walletUrl, customFields });
       } catch (err) {
         console.error(`[SLACK] FAILED: ${err.message}`);
       }

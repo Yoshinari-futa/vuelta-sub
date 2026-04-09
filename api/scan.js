@@ -6,6 +6,56 @@
 
 const jwt = require('jsonwebtoken');
 
+/** PassKit list API のレスポンス（NDJSON / 単一JSON / 配列）を配列に統一 */
+function parseMemberListResponse(text) {
+  const t = (text || '').trim();
+  if (!t) return [];
+  if (t.startsWith('[')) {
+    try {
+      const arr = JSON.parse(t);
+      return Array.isArray(arr) ? arr : [];
+    } catch (_) {
+      /* fall through */
+    }
+  }
+  if (t.startsWith('{')) {
+    try {
+      const obj = JSON.parse(t);
+      if (Array.isArray(obj.members)) return obj.members;
+      if (Array.isArray(obj.passes)) return obj.passes;
+      if (Array.isArray(obj.results)) return obj.results;
+      if (obj.result && obj.result.id) return [obj.result];
+    } catch (_) {
+      /* fall through */
+    }
+  }
+  const out = [];
+  for (const line of t.split('\n')) {
+    const lineTrim = line.trim();
+    if (!lineTrim) continue;
+    try {
+      const parsed = JSON.parse(lineTrim);
+      const m = parsed.result !== undefined ? parsed.result : parsed;
+      if (m && m.id) out.push(m);
+    } catch (_) {
+      /* skip bad line */
+    }
+  }
+  return out;
+}
+
+/** クライアント extractMemberId と同等（サーバ側でも再抽出） */
+function extractIdFromScannedString(raw) {
+  if (!raw || typeof raw !== 'string') return '';
+  let val = raw.trim();
+  const urlMatch = val.match(/pskt\.io\/(?:c\/)?([A-Za-z0-9_-]{10,})/i);
+  if (urlMatch) return urlMatch[1];
+  const pathMatch = val.match(/\/([A-Za-z0-9_-]{15,})(?:[?#]|$)/);
+  if (pathMatch) return pathMatch[1];
+  if (/^[A-Za-z0-9_-]{10,}$/.test(val)) return val;
+  return val;
+}
+
 module.exports = async function handler(req, res) {
   // CORS（スキャナーページから呼ぶため）
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -27,7 +77,15 @@ module.exports = async function handler(req, res) {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  let { memberId, secret } = req.body || {};
+  let body = req.body;
+  if (typeof body === 'string') {
+    try {
+      body = JSON.parse(body);
+    } catch (_) {
+      body = {};
+    }
+  }
+  let { memberId, secret } = body || {};
 
   // 簡易認証（スタッフ用PIN）
   const staffPin = process.env.SCAN_PIN || '0000';
@@ -44,11 +102,12 @@ module.exports = async function handler(req, res) {
 
   // URL形式の場合、IDを抽出（クライアント側でも処理するが、念のため二重チェック）
   let cleanId = memberId.trim();
-  const urlMatch = cleanId.match(/pskt\.io\/(?:c\/)?([A-Za-z0-9_-]{10,})/);
+  const urlMatch = cleanId.match(/pskt\.io\/(?:c\/)?([A-Za-z0-9_-]{10,})/i);
   if (urlMatch) cleanId = urlMatch[1];
   // 一般URL末尾のID
-  const pathMatch = cleanId.match(/\/([A-Za-z0-9_-]{15,})(?:\?|$)/);
+  const pathMatch = cleanId.match(/\/([A-Za-z0-9_-]{15,})(?:[?#]|$)/);
   if (!urlMatch && pathMatch) cleanId = pathMatch[1];
+  cleanId = extractIdFromScannedString(cleanId) || cleanId;
 
   console.log(`[SCAN] raw="${memberId}" clean="${cleanId}" len=${cleanId.length}`);
   memberId = cleanId;
@@ -107,30 +166,64 @@ module.exports = async function handler(req, res) {
     }
 
     // 1c: list APIでプログラム全メンバーから検索（直接GETが404になるケースの回避策）
+    // PassKit 公式: POST body は { "filters": { "limit", "offset", "orderBy", ... } }
     let allMembers = [];
     if (!member) {
       console.log(`[SCAN] Trying list fallback for: ${memberId}`);
       try {
-        const listRes = await fetch(`${baseUrl}/members/member/list/${programId}`, {
+        const listBody = {
+          filters: {
+            limit: 500,
+            offset: 0,
+            orderBy: 'created',
+            orderAsc: true,
+          },
+        };
+        let listRes = await fetch(`${baseUrl}/members/member/list/${programId}`, {
           method: 'POST',
           headers: { 'Authorization': token, 'Content-Type': 'application/json' },
-          body: JSON.stringify({ limit: 200 }),
+          body: JSON.stringify(listBody),
         });
+        if (!listRes.ok) {
+          listRes = await fetch(`${baseUrl}/members/member/list/${programId}`, {
+            method: 'POST',
+            headers: { 'Authorization': token, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ limit: 500 }),
+          });
+        }
         if (listRes.ok) {
           const listText = await listRes.text();
-          const lines = listText.trim().split('\n');
-          for (const line of lines) {
-            try {
-              const parsed = JSON.parse(line);
-              const m = parsed.result || parsed;
-              if (m.id) allMembers.push(m);
-              if (m.id === memberId || m.externalId === memberId || m.passMetaData?.altId === memberId) {
-                member = m;
-                console.log(`[SCAN] Found by list search: ${memberId} → ${m.person?.displayName || m.person?.surname || 'Member'}`);
-              }
-            } catch (_) {}
-          }
+          allMembers = parseMemberListResponse(listText);
           console.log(`[SCAN] List returned ${allMembers.length} members`);
+
+          const matchOne = (m) =>
+            m.id === memberId ||
+            m.externalId === memberId ||
+            m.passMetaData?.altId === memberId;
+
+          for (const m of allMembers) {
+            if (matchOne(m)) {
+              member = m;
+              console.log(`[SCAN] Found by list search: ${memberId} → ${m.person?.displayName || m.person?.surname || 'Member'}`);
+              break;
+            }
+          }
+          // バーコードが長い文字列にIDを含む場合の緩い一致
+          if (!member && memberId.length >= 8) {
+            for (const m of allMembers) {
+              const candidates = [m.id, m.externalId, m.passMetaData?.altId].filter(Boolean);
+              for (const c of candidates) {
+                if (c && (memberId.includes(c) || c.includes(memberId))) {
+                  member = m;
+                  console.log(`[SCAN] Found by fuzzy list match: ${memberId} ↔ ${c}`);
+                  break;
+                }
+              }
+              if (member) break;
+            }
+          }
+        } else {
+          console.log(`[SCAN] list API failed: ${listRes.status}`);
         }
       } catch (e) {
         console.log(`[SCAN] list fallback error: ${e.message}`);
@@ -161,14 +254,17 @@ module.exports = async function handler(req, res) {
 
     console.log(`[SCAN] ${displayName}: points ${currentPoints} → ${newPoints}`);
 
-    // 2. ポイント（来店回数）を+1して更新
+    // 2. ポイント（来店回数）を+1して更新（PassKit は tierId 等を要求する場合あり）
     const updateRes = await fetch(`${baseUrl}/members/member`, {
       method: 'PUT',
       headers: { 'Authorization': token, 'Content-Type': 'application/json' },
       body: JSON.stringify({
         id: member.id,
         programId: programId,
+        tierId: member.tierId,
         points: newPoints,
+        person: member.person,
+        externalId: member.externalId,
       }),
     });
 
