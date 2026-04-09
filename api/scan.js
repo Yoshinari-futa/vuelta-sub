@@ -1,15 +1,34 @@
 /**
  * POST /scan
- * バーコードスキャン → PassKit 来店回数（points）+1
+ * バーコードスキャン → PassKit 来店回数（points）+1 & ティア自動昇格
  * Body: { memberId, secret }
  *
- * v9: altId検索追加・points上書きバグ修正
+ * v10: 来店回数ベースのティア自動昇格
+ *   Base (0-2) → Silver (3-9) → Gold (10-19) → Black (20+)
  */
 
 const parseVisitCount = require('../lib/parse-visit-count');
 const { getPassKitAuth } = require('../lib/passkit-auth');
+const { TIER_BASE, TIER_SILVER, TIER_GOLD, TIER_BLACK } = require('../lib/passkit-tier-ids');
 
-const SCAN_API_VERSION = '2026-04-10-v9-altid';
+const SCAN_API_VERSION = '2026-04-10-v10-tiers';
+
+// ── ティア判定 ──
+
+const TIER_THRESHOLDS = [
+  { min: 20, id: TIER_BLACK,  label: 'Black' },
+  { min: 10, id: TIER_GOLD,   label: 'Gold' },
+  { min: 3,  id: TIER_SILVER, label: 'Silver' },
+  { min: 0,  id: TIER_BASE,   label: 'Base' },
+];
+
+/** 来店回数からティアIDを決定 */
+function tierForVisits(visits) {
+  for (const t of TIER_THRESHOLDS) {
+    if (visits >= t.min) return t;
+  }
+  return TIER_THRESHOLDS[TIER_THRESHOLDS.length - 1];
+}
 
 // ── helpers ──
 
@@ -216,7 +235,12 @@ module.exports = async function handler(req, res) {
     const p = member.person || {};
     const displayName = p.displayName || [p.forename, p.surname].filter(Boolean).join(' ') || 'Member';
 
-    console.log(`[SCAN] ${displayName}: ${currentPoints} → ${newPoints} (foundVia=${foundVia})`);
+    // ── ティア判定 ──
+    const newTier = tierForVisits(newPoints);
+    const oldTier = tierForVisits(currentPoints);
+    const tierChanged = newTier.id !== (member.tierId || TIER_BASE);
+
+    console.log(`[SCAN] ${displayName}: ${currentPoints} → ${newPoints} tier=${newTier.label}${tierChanged ? ` (升格! ${member.tierId}→${newTier.id})` : ''} foundVia=${foundVia}`);
 
     // メンバーの実 programId を優先
     const effectiveProgramId = (member.programId || programId || '').trim();
@@ -224,14 +248,31 @@ module.exports = async function handler(req, res) {
       console.warn(`[SCAN] programId mismatch: env=${programId} member=${member.programId}`);
     }
 
-    // ── Step 2: ポイント更新（3段階フォールバック） ──
+    // 成功時の共通レスポンス
+    const successResponse = (via) => ({
+      success: true,
+      member: displayName,
+      visits: newPoints,
+      previousVisits: currentPoints,
+      tier: newTier.label,
+      tierId: newTier.id,
+      tierChanged,
+      message: tierChanged
+        ? `${displayName}さん ${newPoints}回目の来店！🎉 ${newTier.label}ランクに昇格！`
+        : `${displayName}さん ${newPoints}回目の来店！`,
+      via,
+      foundVia,
+      scanApiVersion: SCAN_API_VERSION,
+    });
+
+    // ── Step 2: ポイント更新 + ティア変更（3段階フォールバック） ──
     const results = {};
 
-    // 2a: PUT /members/member
+    // 2a: PUT /members/member（ポイント＋ティアを同時更新）
     const updateBody = {
       id: member.id,
       programId: effectiveProgramId,
-      tierId: member.tierId || (process.env.PASSKIT_TIER_ID || 'base'),
+      tierId: newTier.id,
       points: newPoints,
     };
     try {
@@ -244,16 +285,7 @@ module.exports = async function handler(req, res) {
       results.updateMember = { status: r.status, ok: r.ok, body: t.substring(0, 300) };
       console.log(`[SCAN] updateMember: ${r.status} ${t.substring(0, 200)}`);
       if (r.ok) {
-        return res.status(200).json({
-          success: true,
-          member: displayName,
-          visits: newPoints,
-          previousVisits: currentPoints,
-          message: `${displayName}さん ${newPoints}回目の来店！`,
-          via: 'updateMember',
-          foundVia,
-          scanApiVersion: SCAN_API_VERSION,
-        });
+        return res.status(200).json(successResponse('updateMember'));
       }
     } catch (e) {
       results.updateMember = { error: e.message };
@@ -272,16 +304,7 @@ module.exports = async function handler(req, res) {
       results.pointsSet = { status: r.status, ok: r.ok, body: t.substring(0, 300) };
       console.log(`[SCAN] points/set: ${r.status} ${t.substring(0, 200)}`);
       if (r.ok) {
-        return res.status(200).json({
-          success: true,
-          member: displayName,
-          visits: newPoints,
-          previousVisits: currentPoints,
-          message: `${displayName}さん ${newPoints}回目の来店！`,
-          via: 'points/set',
-          foundVia,
-          scanApiVersion: SCAN_API_VERSION,
-        });
+        return res.status(200).json(successResponse('points/set'));
       }
     } catch (e) {
       results.pointsSet = { error: e.message };
@@ -300,16 +323,7 @@ module.exports = async function handler(req, res) {
       results.pointsEarn = { status: r.status, ok: r.ok, body: t.substring(0, 300) };
       console.log(`[SCAN] points/earn: ${r.status} ${t.substring(0, 200)}`);
       if (r.ok) {
-        return res.status(200).json({
-          success: true,
-          member: displayName,
-          visits: newPoints,
-          previousVisits: currentPoints,
-          message: `${displayName}さん ${newPoints}回目の来店！`,
-          via: 'points/earn',
-          foundVia,
-          scanApiVersion: SCAN_API_VERSION,
-        });
+        return res.status(200).json(successResponse('points/earn'));
       }
     } catch (e) {
       results.pointsEarn = { error: e.message };
