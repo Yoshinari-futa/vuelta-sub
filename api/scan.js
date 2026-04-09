@@ -27,7 +27,7 @@ module.exports = async function handler(req, res) {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  const { memberId, secret } = req.body || {};
+  let { memberId, secret } = req.body || {};
 
   // 簡易認証（スタッフ用PIN）
   const staffPin = process.env.SCAN_PIN || '0000';
