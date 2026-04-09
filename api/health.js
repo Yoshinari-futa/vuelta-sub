@@ -68,12 +68,28 @@ module.exports = async function handler(req, res) {
         pointsTest = { error: e.message };
       }
 
+      // 4. 特定メンバー取得テスト（?member=xxx）
+      let memberTest = { status: 'skipped' };
+      const memberId = req.query?.member;
+      if (memberId) {
+        try {
+          const mr = await fetch(`${baseUrl}/members/member/${encodeURIComponent(memberId)}`, {
+            headers: { Authorization: token },
+          });
+          const mt = await mr.text();
+          memberTest = { status: mr.status, body: mt.substring(0, 1200) };
+        } catch (e) {
+          memberTest = { error: e.message };
+        }
+      }
+
       base.passkit = {
         baseUrl,
         programId,
         programTest,
         listTest,
         pointsTest,
+        memberTest,
       };
     } catch (e) {
       base.passkit = { error: e.message };
