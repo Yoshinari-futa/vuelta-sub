@@ -2,6 +2,11 @@
  * POST /scan
  * バーコードスキャン → PassKit来店カウント+1
  * Body: { memberId, secret }
+ *
+ * 来店回数に応じたティア（カード色）:
+ *   PASSKIT_TIER_VISIT_TIERS_ENABLED が false のときは従来どおり tier を変えない。
+ *   それ以外では VISITS_MIN_* と PASSKIT_TIER_ID_* で白→銀→金→黒を切替。
+ *   PassKit 側で各 tierId に色違いテンプレを紐づけておくこと。
  */
 
 const jwt = require('jsonwebtoken');
@@ -54,6 +59,35 @@ function extractIdFromScannedString(raw) {
   if (pathMatch) return pathMatch[1];
   if (/^[A-Za-z0-9_-]{10,}$/.test(val)) return val;
   return val;
+}
+
+/** 来店回数（= points）に応じた tierId。PassKit の tier id はプログラム内で一意・小文字推奨 */
+function tierIdForVisitCount(visits) {
+  const white = process.env.PASSKIT_TIER_ID_WHITE || process.env.PASSKIT_TIER_ID || 'base';
+  const silver = process.env.PASSKIT_TIER_ID_SILVER || 'silver';
+  const gold = process.env.PASSKIT_TIER_ID_GOLD || 'gold';
+  const black = process.env.PASSKIT_TIER_ID_BLACK || 'black';
+  const minSilver = parseInt(String(process.env.VISITS_MIN_FOR_SILVER || '1').trim(), 10) || 1;
+  const minGold = parseInt(String(process.env.VISITS_MIN_FOR_GOLD || '5').trim(), 10) || 5;
+  const minBlack = parseInt(String(process.env.VISITS_MIN_FOR_BLACK || '15').trim(), 10) || 15;
+
+  const v = Number(visits);
+  if (v < minSilver) return white;
+  if (v < minGold) return silver;
+  if (v < minBlack) return gold;
+  return black;
+}
+
+function tierColorLabel(tierId) {
+  const white = process.env.PASSKIT_TIER_ID_WHITE || process.env.PASSKIT_TIER_ID || 'base';
+  const silver = process.env.PASSKIT_TIER_ID_SILVER || 'silver';
+  const gold = process.env.PASSKIT_TIER_ID_GOLD || 'gold';
+  const black = process.env.PASSKIT_TIER_ID_BLACK || 'black';
+  if (tierId === white) return 'white';
+  if (tierId === silver) return 'silver';
+  if (tierId === gold) return 'gold';
+  if (tierId === black) return 'black';
+  return 'unknown';
 }
 
 module.exports = async function handler(req, res) {
@@ -254,6 +288,15 @@ module.exports = async function handler(req, res) {
 
     console.log(`[SCAN] ${displayName}: points ${currentPoints} → ${newPoints}`);
 
+    const visitTiersOn = String(process.env.PASSKIT_TIER_VISIT_TIERS_ENABLED || 'true').toLowerCase() !== 'false';
+    let targetTierId = member.tierId;
+    if (visitTiersOn) {
+      targetTierId = tierIdForVisitCount(newPoints);
+      if (targetTierId !== member.tierId) {
+        console.log(`[SCAN] tier ${member.tierId} → ${targetTierId} (visits=${newPoints})`);
+      }
+    }
+
     // 2. ポイント（来店回数）を+1して更新（PassKit は tierId 等を要求する場合あり）
     const updateRes = await fetch(`${baseUrl}/members/member`, {
       method: 'PUT',
@@ -261,7 +304,7 @@ module.exports = async function handler(req, res) {
       body: JSON.stringify({
         id: member.id,
         programId: programId,
-        tierId: member.tierId,
+        tierId: targetTierId,
         points: newPoints,
         person: member.person,
         externalId: member.externalId,
@@ -275,12 +318,18 @@ module.exports = async function handler(req, res) {
       return res.status(500).json({ error: 'Failed to update points', detail: updateText.substring(0, 100) });
     }
 
-    return res.status(200).json({
+    const out = {
       success: true,
       member: displayName,
       visits: newPoints,
       message: `${displayName}さん ${newPoints}回目の来店！`,
-    });
+    };
+    if (visitTiersOn) {
+      out.tierId = targetTierId;
+      out.tierColor = tierColorLabel(targetTierId);
+      out.tierChanged = targetTierId !== member.tierId;
+    }
+    return res.status(200).json(out);
 
   } catch (err) {
     console.error(`[SCAN] ERROR: ${err.message}`);
