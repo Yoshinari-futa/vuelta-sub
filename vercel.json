@@ -67,6 +67,10 @@
     {
       "src": "/fix-barcode",
       "dest": "/api/fix-barcode.js"
+    },
+    {
+      "src": "/repair-member-visits",
+      "dest": "/api/repair-member-visits.js"
     }
   ]
 }
