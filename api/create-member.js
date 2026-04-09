@@ -5,8 +5,8 @@
  */
 
 const nodemailer = require('nodemailer');
-const jwt = require('jsonwebtoken');
-const { TIER_BASE } = require('./passkit-tier-ids');
+const { getPassKitAuth } = require('../lib/passkit-auth');
+const { TIER_BASE } = require('../lib/passkit-tier-ids');
 
 module.exports = async function handler(req, res) {
   if (req.method !== 'POST') {
@@ -28,22 +28,9 @@ module.exports = async function handler(req, res) {
   // --- PassKit メンバー作成 ---
   let walletUrl = null;
   try {
-    let passkitHost = process.env.PASSKIT_HOST || 'api.pub2.passkit.io';
-    if (!passkitHost.startsWith('http')) passkitHost = 'https://' + passkitHost;
-    const passkitBaseUrl = passkitHost.replace(/\/$/, '');
+    const { token, baseUrl: passkitBaseUrl } = getPassKitAuth();
     const programId = process.env.PASSKIT_PROGRAM_ID;
     const tierId = process.env.PASSKIT_TIER_ID || TIER_BASE;
-    const apiKeyId = (process.env.PASSKIT_API_KEY || '').trim();
-    const apiKeySecret = (process.env.PASSKIT_API_KEY_SECRET || '').trim();
-
-    if (!apiKeyId || !apiKeySecret) throw new Error('PASSKIT credentials missing');
-
-    const now = Math.floor(Date.now() / 1000);
-    const token = jwt.sign(
-      { uid: apiKeyId, iat: now, exp: now + 3600 },
-      apiKeySecret,
-      { algorithm: 'HS256', header: { alg: 'HS256', typ: 'JWT' } }
-    );
 
     const apiUrl = `${passkitBaseUrl}/members/member`;
     const controller = new AbortController();

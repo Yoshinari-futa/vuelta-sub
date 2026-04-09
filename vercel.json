@@ -33,7 +33,10 @@
     },
     {
       "src": "/scan",
-      "dest": "/api/scan.js"
+      "dest": "/api/scan.js",
+      "headers": {
+        "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate"
+      }
     },
     {
       "src": "/scanner",

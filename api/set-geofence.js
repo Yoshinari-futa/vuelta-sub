@@ -17,8 +17,8 @@
  *   VUELTA_GEOFENCE_TEXT — ロック画面向け短文（英語推奨・長すぎない）
  */
 
-const jwt = require('jsonwebtoken');
-const { TIER_BASE } = require('./passkit-tier-ids');
+const { getPassKitAuth } = require('../lib/passkit-auth');
+const { TIER_BASE } = require('../lib/passkit-tier-ids');
 
 const DEFAULT_LAT = 34.3893066;
 const DEFAULT_LNG = 132.4541823;
@@ -80,15 +80,10 @@ module.exports = async function handler(req, res) {
       }
     }
 
-    const passkitApiKeyId = (process.env.PASSKIT_API_KEY || '').trim();
-    const passkitApiKeySecret = (process.env.PASSKIT_API_KEY_SECRET || '').trim();
     const programId = process.env.PASSKIT_PROGRAM_ID;
     const tierId = (process.env.PASSKIT_TIER_ID || TIER_BASE).trim();
-    let passkitHost = process.env.PASSKIT_HOST || 'api.pub2.passkit.io';
-    if (!passkitHost.startsWith('http')) passkitHost = 'https://' + passkitHost;
-    passkitHost = passkitHost.replace(/\/$/, '');
 
-    if (!passkitApiKeyId || !passkitApiKeySecret || !programId) {
+    if (!programId) {
       return res.status(500).json({ error: 'PASSKIT_API_KEY, PASSKIT_API_KEY_SECRET, PASSKIT_PROGRAM_ID required' });
     }
 
@@ -96,12 +91,15 @@ module.exports = async function handler(req, res) {
     const lng = parseFloat(String(process.env.VUELTA_GEOFENCE_LNG || '').trim()) || DEFAULT_LNG;
     const relevantText = (process.env.VUELTA_GEOFENCE_TEXT || DEFAULT_RELEVANT_TEXT).trim();
 
-    const now = Math.floor(Date.now() / 1000);
-    const token = jwt.sign(
-      { uid: passkitApiKeyId, iat: now, exp: now + 3600 },
-      passkitApiKeySecret,
-      { algorithm: 'HS256', header: { alg: 'HS256', typ: 'JWT' } }
-    );
+    let token;
+    let passkitHost;
+    try {
+      const auth = getPassKitAuth();
+      token = auth.token;
+      passkitHost = auth.baseUrl;
+    } catch (e) {
+      return res.status(500).json({ error: 'PASSKIT_API_KEY, PASSKIT_API_KEY_SECRET, PASSKIT_PROGRAM_ID required' });
+    }
 
     const authHeaders = { Authorization: token, 'Content-Type': 'application/json' };
 

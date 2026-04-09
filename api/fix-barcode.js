@@ -6,8 +6,8 @@
  * PassKit BarcodeType enum:
  *   0=DO_NOT_USE, 1=QR, 2=AZTEC, 3=PDF417, 4=CODE128, 5=TEXT, 6=DATA_MATRIX
  */
-const jwt = require('jsonwebtoken');
-const { TIER_BLACK } = require('./passkit-tier-ids');
+const { getPassKitAuth } = require('../lib/passkit-auth');
+const { TIER_BLACK } = require('../lib/passkit-tier-ids');
 
 module.exports = async function handler(req, res) {
   if (req.method !== 'POST') {
@@ -19,22 +19,15 @@ module.exports = async function handler(req, res) {
     return res.status(401).json({ error: 'Unauthorized' });
   }
 
-  const apiKeyId = (process.env.PASSKIT_API_KEY || '').trim();
-  const apiKeySecret = (process.env.PASSKIT_API_KEY_SECRET || '').trim();
-  if (!apiKeyId || !apiKeySecret) {
+  let token;
+  let host;
+  try {
+    const auth = getPassKitAuth();
+    token = auth.token;
+    host = auth.baseUrl;
+  } catch (e) {
     return res.status(500).json({ error: 'PASSKIT credentials missing' });
   }
-
-  const now = Math.floor(Date.now() / 1000);
-  const token = jwt.sign(
-    { uid: apiKeyId, iat: now, exp: now + 3600 },
-    apiKeySecret,
-    { algorithm: 'HS256', header: { alg: 'HS256', typ: 'JWT' } }
-  );
-
-  let host = process.env.PASSKIT_HOST || 'api.pub2.passkit.io';
-  if (!host.startsWith('http')) host = 'https://' + host;
-  host = host.replace(/\/$/, '');
 
   const programId = process.env.PASSKIT_PROGRAM_ID;
   const tierId = process.env.PASSKIT_TIER_ID || TIER_BLACK;

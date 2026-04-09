@@ -186,7 +186,14 @@
 
   if (staffPin) {
     fetch('/scan?secret=' + encodeURIComponent(staffPin))
-      .then(r => r.json())
+      .then(async (r) => {
+        const t = await r.text();
+        try {
+          return t ? JSON.parse(t) : {};
+        } catch {
+          return {};
+        }
+      })
       .then(d => {
         if (d.valid) { pinOverlay.classList.add('hidden'); onAuth(); }
         else { sessionStorage.removeItem(PIN_KEY); staffPin = ''; }
@@ -203,7 +210,15 @@
     pinBtn.disabled = true; pinBtn.textContent = '...';
     try {
       const resp = await fetch('/scan?secret=' + encodeURIComponent(val));
-      const data = await resp.json();
+      const raw = await resp.text();
+      let data = {};
+      try {
+        data = raw ? JSON.parse(raw) : {};
+      } catch {
+        pinError.textContent = '応答が不正です';
+        pinBtn.disabled = false; pinBtn.textContent = 'ENTER';
+        return;
+      }
       if (resp.ok && data.valid) {
         staffPin = val;
         sessionStorage.setItem(PIN_KEY, staffPin);
@@ -553,10 +568,23 @@
     try {
       const resp = await fetch('/scan', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        cache: 'no-store',
+        headers: {
+          'Content-Type': 'application/json',
+          'Cache-Control': 'no-cache',
+        },
         body: JSON.stringify({ memberId: memberId, secret: staffPin }),
       });
-      const data = await resp.json();
+      const raw = await resp.text();
+      let data = {};
+      try {
+        data = raw ? JSON.parse(raw) : {};
+      } catch (e) {
+        throw new Error(
+          'サーバー応答がJSONではありません: ' +
+            (raw.slice(0, 200) || resp.statusText || 'empty')
+        );
+      }
 
       const card = document.getElementById('resultCard');
       const nameEl = document.getElementById('rName');
@@ -568,7 +596,11 @@
         nameEl.textContent = data.member || 'Member';
         visitsEl.textContent = data.visits;
         document.getElementById('rVisitsLabel').textContent = 'VISITS';
-        msgEl.textContent = data.message || '';
+        let okMsg = data.message || '';
+        if (data.via) okMsg += (okMsg ? '\n' : '') + '[' + data.via + ']';
+        if (data.warning) okMsg += (okMsg ? '\n\n' : '') + data.warning;
+        if (data.scanApiVersion) okMsg += (okMsg ? '\n' : '') + 'scanApiVersion: ' + data.scanApiVersion;
+        msgEl.textContent = okMsg;
         if (navigator.vibrate) navigator.vibrate(80);
       } else {
         card.className = 'result-card error';
@@ -583,10 +615,36 @@
           visitsEl.textContent = '—';
           document.getElementById('rVisitsLabel').textContent = '';
           let errMsg = data.error || 'スキャンに失敗しました';
+          // PassKit の英文だけが error に載る／旧デプロイのとき用に先頭を日本語化
+          if (
+            /failed to update points/i.test(String(errMsg)) &&
+            !/来店|できません|PassKit/.test(String(errMsg))
+          ) {
+            errMsg =
+              '来店回数の更新に失敗しました（PassKit）。\n\n' + errMsg;
+          }
+          if (!data.scanApiVersion) {
+            errMsg =
+              '【デプロイ未反映の可能性】応答に scanApiVersion がありません。Vercel で再デプロイ後、プライベートブラウズで試してください。\n\n' +
+              errMsg;
+          }
+          if (data.passkitMessageEn) {
+            errMsg += '\n\n(PassKit) ' + data.passkitMessageEn;
+          }
+          if (data.hint) errMsg += '\n\n' + data.hint;
+          if (data.earnDetail != null) {
+            errMsg += '\n\n[earn] ' + (typeof data.earnDetail === 'object' ? JSON.stringify(data.earnDetail) : String(data.earnDetail));
+          }
+          if (data.setDetail != null) {
+            errMsg += '\n[set] ' + (typeof data.setDetail === 'object' ? JSON.stringify(data.setDetail) : String(data.setDetail));
+          }
           if (data.detail) {
             errMsg += '\n\n' + (typeof data.detail === 'object' ? JSON.stringify(data.detail, null, 2) : String(data.detail));
           }
-          if (data.passkitStatus) errMsg += '\n(status ' + data.passkitStatus + ')';
+          if (data.earnStatus) errMsg += '\n(earn HTTP ' + data.earnStatus + ')';
+          if (data.setStatus) errMsg += '\n(set HTTP ' + data.setStatus + ')';
+          if (data.passkitStatus) errMsg += '\n(PUT member HTTP ' + data.passkitStatus + ')';
+          if (data.scanApiVersion) errMsg += '\n[scanApiVersion: ' + data.scanApiVersion + ']';
           errMsg += '\n[id: ' + memberId + ']';
           msgEl.style.whiteSpace = 'pre-wrap';
           msgEl.style.fontSize = '11px';

@@ -2,23 +2,12 @@
  * GET /list-members
  * プログラム内の全メンバーを一覧表示（デバッグ用）
  */
-const jwt = require('jsonwebtoken');
+const { getPassKitAuth } = require('../lib/passkit-auth');
 
 module.exports = async function handler(req, res) {
   try {
-    const apiKey = (process.env.PASSKIT_API_KEY || '').trim();
-    const apiSecret = (process.env.PASSKIT_API_KEY_SECRET || '').trim();
     const programId = process.env.PASSKIT_PROGRAM_ID;
-    let host = process.env.PASSKIT_HOST || 'api.pub2.passkit.io';
-    if (!host.startsWith('http')) host = 'https://' + host;
-    host = host.replace(/\/$/, '');
-
-    const now = Math.floor(Date.now() / 1000);
-    const token = jwt.sign(
-      { uid: apiKey, iat: now, exp: now + 3600 },
-      apiSecret,
-      { algorithm: 'HS256', header: { alg: 'HS256', typ: 'JWT' } }
-    );
+    const { token, baseUrl: host } = getPassKitAuth();
 
     // メンバー一覧を取得（複数のAPIパターンを試す）
     const results = [];

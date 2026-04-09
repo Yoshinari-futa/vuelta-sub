@@ -2,7 +2,7 @@
  * GET /api/cleanup-member?externalId=cus_xxx
  * PassKitメンバーを手動削除するワンタイムツール
  */
-const jwt = require('jsonwebtoken');
+const { getPassKitAuth } = require('../lib/passkit-auth');
 
 module.exports = async function handler(req, res) {
   const externalId = req.query.externalId;
@@ -11,23 +11,11 @@ module.exports = async function handler(req, res) {
     return res.status(400).json({ error: 'externalId or passkitId query param required' });
   }
 
-  const passkitApiKeyId = (process.env.PASSKIT_API_KEY || '').trim();
-  const passkitApiKeySecret = (process.env.PASSKIT_API_KEY_SECRET || '').trim();
   const programId = process.env.PASSKIT_PROGRAM_ID;
-  let host = process.env.PASSKIT_HOST || 'api.pub2.passkit.io';
-  if (!host.startsWith('http')) host = 'https://' + host;
-  const baseUrl = host.replace(/\/$/, '');
-
-  const now = Math.floor(Date.now() / 1000);
-  const token = jwt.sign(
-    { uid: passkitApiKeyId, iat: now, exp: now + 3600 },
-    passkitApiKeySecret,
-    { algorithm: 'HS256', header: { alg: 'HS256', typ: 'JWT' } }
-  );
-
   const steps = [];
 
   try {
+    const { token, baseUrl } = getPassKitAuth();
     let memberId = passkitId;
 
     // passkitIdが指定されていなければexternalIdで検索

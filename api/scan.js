@@ -3,81 +3,68 @@
  * バーコードスキャン → PassKit 来店回数（points）+1
  * Body: { memberId, secret }
  *
- * ティア（カード種類）は来店回数で変えない。全員 PASSKIT_TIER_ID または TIER_BASE（passkit-tier-ids）の1種類。
+ * v8: シンプル化。メンバー検索 → points PUT → フォールバック
  */
 
-const jwt = require('jsonwebtoken');
-const parseVisitCount = require('./parse-visit-count');
-const { TIER_BASE } = require('./passkit-tier-ids');
+const parseVisitCount = require('../lib/parse-visit-count');
+const { getPassKitAuth } = require('../lib/passkit-auth');
 
-/** 全員共通の PassKit tier（色はこの1種類のみ） */
-function getSingleTierId() {
-  return (process.env.PASSKIT_TIER_ID || TIER_BASE).trim();
-}
+const SCAN_API_VERSION = '2026-04-10-v8-simple';
 
-/** PassKit list API のレスポンス（NDJSON / 単一JSON / 配列）を配列に統一 */
-function parseMemberListResponse(text) {
-  const t = (text || '').trim();
-  if (!t) return [];
-  if (t.startsWith('[')) {
-    try {
-      const arr = JSON.parse(t);
-      return Array.isArray(arr) ? arr : [];
-    } catch (_) {
-      /* fall through */
-    }
-  }
-  if (t.startsWith('{')) {
-    try {
-      const obj = JSON.parse(t);
-      if (Array.isArray(obj.members)) return obj.members;
-      if (Array.isArray(obj.passes)) return obj.passes;
-      if (Array.isArray(obj.results)) return obj.results;
-      if (obj.result && obj.result.id) return [obj.result];
-    } catch (_) {
-      /* fall through */
-    }
-  }
-  const out = [];
-  for (const line of t.split('\n')) {
-    const lineTrim = line.trim();
-    if (!lineTrim) continue;
-    try {
-      const parsed = JSON.parse(lineTrim);
-      const m = parsed.result !== undefined ? parsed.result : parsed;
-      if (m && m.id) out.push(m);
-    } catch (_) {
-      /* skip bad line */
-    }
-  }
-  return out;
-}
+// ── helpers ──
 
-/** クライアント extractMemberId と同等（サーバ側でも再抽出） */
-function extractIdFromScannedString(raw) {
+/** スキャン文字列からPassKit member IDを抽出 */
+function extractId(raw) {
   if (!raw || typeof raw !== 'string') return '';
   let val = raw.trim();
+  // pskt.io URL
   const urlMatch = val.match(/pskt\.io\/(?:c\/)?([A-Za-z0-9_-]{10,})/i);
   if (urlMatch) return urlMatch[1];
+  // 一般URL末尾
   const pathMatch = val.match(/\/([A-Za-z0-9_-]{15,})(?:[?#]|$)/);
   if (pathMatch) return pathMatch[1];
+  // そのままID
   if (/^[A-Za-z0-9_-]{10,}$/.test(val)) return val;
   return val;
 }
 
+/** NDJSON / 配列 / 単一オブジェクトをメンバー配列に統一 */
+function parseListResponse(text) {
+  const t = (text || '').trim();
+  if (!t) return [];
+  try {
+    const parsed = JSON.parse(t);
+    if (Array.isArray(parsed)) return parsed;
+    if (parsed.members) return parsed.members;
+    if (parsed.passes) return parsed.passes;
+    if (parsed.results) return parsed.results;
+    if (parsed.id) return [parsed];
+  } catch (_) { /* NDJSON */ }
+  const out = [];
+  for (const line of t.split('\n')) {
+    try {
+      const obj = JSON.parse(line.trim());
+      const m = obj.result || obj;
+      if (m && m.id) out.push(m);
+    } catch (_) { /* skip */ }
+  }
+  return out;
+}
+
+// ── handler ──
+
 module.exports = async function handler(req, res) {
-  // CORS（スキャナーページから呼ぶため）
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
   if (req.method === 'OPTIONS') return res.status(200).end();
 
-  // GET: PIN検証のみ（カメラ起動前のチェック用）
+  // GET: PIN検証のみ
   if (req.method === 'GET') {
     const pin = req.query?.secret;
     const staffPin = process.env.SCAN_PIN || '0000';
     if (pin === staffPin) {
-      return res.status(200).json({ valid: true });
+      return res.status(200).json({ valid: true, scanApiVersion: SCAN_API_VERSION });
     }
     return res.status(401).json({ valid: false, error: 'Invalid PIN' });
   }
@@ -88,301 +75,229 @@ module.exports = async function handler(req, res) {
 
   let body = req.body;
   if (typeof body === 'string') {
-    try {
-      body = JSON.parse(body);
-    } catch (_) {
-      body = {};
-    }
+    try { body = JSON.parse(body); } catch (_) { body = {}; }
   }
   let { memberId, secret } = body || {};
 
-  // 簡易認証（スタッフ用PIN）
   const staffPin = process.env.SCAN_PIN || '0000';
   if (secret !== staffPin) {
     return res.status(401).json({ error: 'Invalid PIN' });
   }
-
   if (!memberId) {
-    return res.status(400).json({
-      error: 'memberId is required',
-      rawBody: JSON.stringify(req.body).substring(0, 200),
-    });
+    return res.status(400).json({ error: 'memberId is required' });
   }
 
-  // URL形式の場合、IDを抽出（クライアント側でも処理するが、念のため二重チェック）
-  let cleanId = memberId.trim();
-  const urlMatch = cleanId.match(/pskt\.io\/(?:c\/)?([A-Za-z0-9_-]{10,})/i);
-  if (urlMatch) cleanId = urlMatch[1];
-  // 一般URL末尾のID
-  const pathMatch = cleanId.match(/\/([A-Za-z0-9_-]{15,})(?:[?#]|$)/);
-  if (!urlMatch && pathMatch) cleanId = pathMatch[1];
-  cleanId = extractIdFromScannedString(cleanId) || cleanId;
-
-  console.log(`[SCAN] raw="${memberId}" clean="${cleanId}" len=${cleanId.length}`);
-  memberId = cleanId;
+  const cleanId = extractId(memberId);
+  console.log(`[SCAN] raw="${memberId}" clean="${cleanId}"`);
 
   try {
-    // PassKit認証
-    const apiKeyId = (process.env.PASSKIT_API_KEY || '').trim();
-    const apiKeySecret = (process.env.PASSKIT_API_KEY_SECRET || '').trim();
-    if (!apiKeyId || !apiKeySecret) throw new Error('PASSKIT credentials missing');
+    const { token, baseUrl } = getPassKitAuth();
+    const programId = (process.env.PASSKIT_PROGRAM_ID || '').trim();
 
-    const now = Math.floor(Date.now() / 1000);
-    const token = jwt.sign(
-      { uid: apiKeyId, iat: now, exp: now + 3600 },
-      apiKeySecret,
-      { algorithm: 'HS256', header: { alg: 'HS256', typ: 'JWT' } }
-    );
-
-    let host = process.env.PASSKIT_HOST || 'api.pub2.passkit.io';
-    if (!host.startsWith('http')) host = 'https://' + host;
-    const baseUrl = host.replace(/\/$/, '');
-
-    // 1. メンバー情報を取得（複数の方法で検索）
-    const programId = process.env.PASSKIT_PROGRAM_ID;
+    // ── Step 1: メンバー検索 ──
     let member = null;
 
-    // 1a: memberId として直接取得
+    // 1a: ID直接
     try {
-      const getRes = await fetch(`${baseUrl}/members/member/${memberId}`, {
-        headers: { 'Authorization': token },
-      });
-      if (getRes.ok) {
-        member = await getRes.json();
-        console.log(`[SCAN] Found by memberId: ${memberId}`);
-      } else {
-        console.log(`[SCAN] memberId lookup failed (${getRes.status})`);
-      }
-    } catch (e) {
-      console.log(`[SCAN] memberId lookup error: ${e.message}`);
-    }
-
-    // 1b: externalId として検索
-    if (!member) {
-      try {
-        const extRes = await fetch(`${baseUrl}/members/member/external/${programId}/${memberId}`, {
-          headers: { 'Authorization': token },
-        });
-        if (extRes.ok) {
-          member = await extRes.json();
-          console.log(`[SCAN] Found by externalId: ${memberId} → id: ${member.id}`);
-        } else {
-          console.log(`[SCAN] externalId lookup failed (${extRes.status})`);
-        }
-      } catch (e) {
-        console.log(`[SCAN] externalId lookup error: ${e.message}`);
-      }
-    }
-
-    // 1c: list APIでプログラム全メンバーから検索（直接GETが404になるケースの回避策）
-    // PassKit 公式: POST body は { "filters": { "limit", "offset", "orderBy", ... } }
-    let allMembers = [];
-    if (!member) {
-      console.log(`[SCAN] Trying list fallback for: ${memberId}`);
-      try {
-        const listBody = {
-          filters: {
-            limit: 500,
-            offset: 0,
-            orderBy: 'created',
-            orderAsc: true,
-          },
-        };
-        let listRes = await fetch(`${baseUrl}/members/member/list/${programId}`, {
-          method: 'POST',
-          headers: { 'Authorization': token, 'Content-Type': 'application/json' },
-          body: JSON.stringify(listBody),
-        });
-        if (!listRes.ok) {
-          listRes = await fetch(`${baseUrl}/members/member/list/${programId}`, {
-            method: 'POST',
-            headers: { 'Authorization': token, 'Content-Type': 'application/json' },
-            body: JSON.stringify({ limit: 500 }),
-          });
-        }
-        if (listRes.ok) {
-          const listText = await listRes.text();
-          allMembers = parseMemberListResponse(listText);
-          console.log(`[SCAN] List returned ${allMembers.length} members`);
-
-          const matchOne = (m) =>
-            m.id === memberId ||
-            m.externalId === memberId ||
-            m.passMetaData?.altId === memberId;
-
-          for (const m of allMembers) {
-            if (matchOne(m)) {
-              member = m;
-              console.log(`[SCAN] Found by list search: ${memberId} → ${m.person?.displayName || m.person?.surname || 'Member'}`);
-              break;
-            }
-          }
-          // バーコードが長い文字列にIDを含む場合の緩い一致
-          if (!member && memberId.length >= 8) {
-            for (const m of allMembers) {
-              const candidates = [m.id, m.externalId, m.passMetaData?.altId].filter(Boolean);
-              for (const c of candidates) {
-                if (c && (memberId.includes(c) || c.includes(memberId))) {
-                  member = m;
-                  console.log(`[SCAN] Found by fuzzy list match: ${memberId} ↔ ${c}`);
-                  break;
-                }
-              }
-              if (member) break;
-            }
-          }
-        } else {
-          console.log(`[SCAN] list API failed: ${listRes.status}`);
-        }
-      } catch (e) {
-        console.log(`[SCAN] list fallback error: ${e.message}`);
-      }
-    }
-
-    if (!member) {
-      // デバッグ: 全メンバーのIDリストを出力
-      const memberIds = allMembers.map(m => ({
-        id: m.id,
-        extId: m.externalId || '',
-        altId: m.passMetaData?.altId || '',
-        name: m.person?.displayName || [m.person?.forename, m.person?.surname].filter(Boolean).join(' ') || '?',
-      }));
-      console.error(`[SCAN] All lookups failed for: "${memberId}" (len=${memberId.length}). Members in program: ${JSON.stringify(memberIds)}`);
-      return res.status(404).json({
-        error: 'Member not found',
-        scannedValue: memberId,
-        scannedLength: memberId.length,
-        programId,
-        existingMembers: memberIds,
-      });
-    }
-
-    // 一覧フォールバック等で薄いオブジェクトのときがある。更新前に必ず ID でフル GET し直す（2回目 PUT 失敗の予防）
-    try {
-      const refreshRes = await fetch(`${baseUrl}/members/member/${member.id}`, {
+      const r = await fetch(`${baseUrl}/members/member/${cleanId}`, {
         headers: { Authorization: token },
       });
-      if (refreshRes.ok) {
-        member = await refreshRes.json();
-        console.log(`[SCAN] Refreshed member by id: ${member.id}`);
+      if (r.ok) {
+        member = await r.json();
+        console.log(`[SCAN] Found by id: ${member.id}`);
       } else {
-        console.warn(`[SCAN] Refresh GET failed ${refreshRes.status}, using prior member object`);
+        console.log(`[SCAN] id lookup: ${r.status}`);
       }
     } catch (e) {
-      console.warn(`[SCAN] Refresh GET error: ${e.message}`);
+      console.log(`[SCAN] id lookup err: ${e.message}`);
     }
+
+    // 1b: externalId
+    if (!member && programId) {
+      try {
+        const r = await fetch(`${baseUrl}/members/member/external/${programId}/${cleanId}`, {
+          headers: { Authorization: token },
+        });
+        if (r.ok) {
+          member = await r.json();
+          console.log(`[SCAN] Found by externalId: ${member.id}`);
+        } else {
+          console.log(`[SCAN] extId lookup: ${r.status}`);
+        }
+      } catch (e) {
+        console.log(`[SCAN] extId lookup err: ${e.message}`);
+      }
+    }
+
+    // 1c: リスト検索（fuzzy）
+    if (!member && programId) {
+      try {
+        const r = await fetch(`${baseUrl}/members/member/list/${programId}`, {
+          method: 'POST',
+          headers: { Authorization: token, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ filters: { limit: 500 } }),
+        });
+        if (r.ok) {
+          const members = parseListResponse(await r.text());
+          console.log(`[SCAN] list: ${members.length} members`);
+          member = members.find(m =>
+            m.id === cleanId ||
+            m.externalId === cleanId ||
+            (cleanId.length >= 8 && (
+              (m.id && (m.id.includes(cleanId) || cleanId.includes(m.id))) ||
+              (m.externalId && (m.externalId.includes(cleanId) || cleanId.includes(m.externalId)))
+            ))
+          );
+          if (member) console.log(`[SCAN] Found in list: ${member.id}`);
+        } else {
+          console.log(`[SCAN] list: ${r.status}`);
+        }
+      } catch (e) {
+        console.log(`[SCAN] list err: ${e.message}`);
+      }
+    }
+
+    if (!member) {
+      return res.status(404).json({
+        error: 'Member not found',
+        scannedValue: cleanId,
+        programId: programId || null,
+        scanApiVersion: SCAN_API_VERSION,
+      });
+    }
+
+    // メンバーをフルGETで更新
+    try {
+      const r = await fetch(`${baseUrl}/members/member/${member.id}`, {
+        headers: { Authorization: token },
+      });
+      if (r.ok) member = await r.json();
+    } catch (_) { /* use existing */ }
 
     const currentPoints = parseVisitCount(member.points);
     const newPoints = currentPoints + 1;
     const p = member.person || {};
     const displayName = p.displayName || [p.forename, p.surname].filter(Boolean).join(' ') || 'Member';
 
-    if (String(member.points) !== String(currentPoints) && member.points != null) {
-      console.warn(
-        `[SCAN] points normalized: raw=${JSON.stringify(member.points)} → ${currentPoints} (next ${newPoints})`
-      );
-    }
-    console.log(`[SCAN] ${displayName}: points ${currentPoints} → ${newPoints}`);
+    console.log(`[SCAN] ${displayName}: ${currentPoints} → ${newPoints}`);
 
-    const targetTierId = getSingleTierId();
-    if (member.tierId !== targetTierId) {
-      console.log(`[SCAN] normalize tier → ${targetTierId} (visits=${newPoints})`);
-    }
-
-    // PassKit 上の会員の programId を優先（Vercel の PASSKIT_PROGRAM_ID と不一致だと PUT が必ず失敗する）
-    const effectiveProgramId =
-      (member.programId && String(member.programId).trim()) || programId;
+    // メンバーの実 programId を優先（env と不一致の場合がある）
+    const effectiveProgramId = (member.programId || programId || '').trim();
     if (member.programId && programId && member.programId !== programId) {
-      console.warn(
-        `[SCAN] env PASSKIT_PROGRAM_ID (${programId}) !== member.programId (${member.programId}) — using member.programId for update`
-      );
+      console.warn(`[SCAN] programId mismatch: env=${programId} member=${member.programId}`);
     }
 
-    // 2. 来店回数 +1、ティアは常に共通の1種類
-    const updatePayload = {
+    // ── Step 2: ポイント更新（3段階フォールバック） ──
+    const results = {};
+
+    // 2a: PUT /members/member（全フィールド更新）
+    const updateBody = {
       id: member.id,
       programId: effectiveProgramId,
-      tierId: targetTierId,
+      tierId: member.tierId || (process.env.PASSKIT_TIER_ID || 'base'),
       points: newPoints,
-      person: member.person,
-      externalId: member.externalId,
     };
-    if (member.groupingIdentifier) updatePayload.groupingIdentifier = member.groupingIdentifier;
-    if (member.tierPoints !== undefined && member.tierPoints !== null) {
-      updatePayload.tierPoints = member.tierPoints;
-    }
-    if (member.secondaryPoints !== undefined && member.secondaryPoints !== null) {
-      updatePayload.secondaryPoints = member.secondaryPoints;
-    }
-    if (member.optOut === true || member.optOut === false) updatePayload.optOut = member.optOut;
-    if (member.passOverrides && typeof member.passOverrides === 'object') {
-      updatePayload.passOverrides = member.passOverrides;
-    }
-
-    const putMember = async (payload, label) => {
+    try {
       const r = await fetch(`${baseUrl}/members/member`, {
         method: 'PUT',
-        headers: { 'Authorization': token, 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
+        headers: { Authorization: token, 'Content-Type': 'application/json' },
+        body: JSON.stringify(updateBody),
       });
       const t = await r.text();
-      console.log(`[SCAN] UPDATE (${label}): ${r.status} - ${t.substring(0, 500)}`);
-      return { ok: r.ok, status: r.status, text: t };
-    };
-
-    let updateRes = await putMember(updatePayload, 'full');
-    let updateText = updateRes.text;
-
-    // person / passOverrides 等で PassKit が弾く場合がある → 最小フィールドだけ再試行
-    if (!updateRes.ok) {
-      const minimalPayload = {
-        id: member.id,
-        programId: effectiveProgramId,
-        tierId: targetTierId,
-        points: Math.floor(Number(newPoints)),
-      };
-      const retry = await putMember(minimalPayload, 'minimal');
-      updateRes = retry;
-      updateText = retry.text;
-    }
-
-    // tierId（共通1種類）が別プログラムでは無効な場合がある → 元の tier のまま points のみ更新
-    if (!updateRes.ok && member.tierId && member.tierId !== targetTierId) {
-      const pointsOnlyPayload = {
-        id: member.id,
-        programId: effectiveProgramId,
-        tierId: member.tierId,
-        points: Math.floor(Number(newPoints)),
-      };
-      const retry2 = await putMember(pointsOnlyPayload, 'points-only-keep-tier');
-      updateRes = retry2;
-      updateText = retry2.text;
-    }
-
-    if (!updateRes.ok) {
-      let detailObj = updateText;
-      try {
-        detailObj = JSON.parse(updateText);
-      } catch (_) {
-        /* plain text */
+      results.updateMember = { status: r.status, ok: r.ok, body: t.substring(0, 300) };
+      console.log(`[SCAN] updateMember: ${r.status} ${t.substring(0, 200)}`);
+      if (r.ok) {
+        let afterPoints = newPoints;
+        try { afterPoints = parseVisitCount(JSON.parse(t).points); } catch (_) {}
+        return res.status(200).json({
+          success: true,
+          member: displayName,
+          visits: afterPoints,
+          message: `${displayName}さん ${afterPoints}回目の来店！`,
+          via: 'updateMember',
+          scanApiVersion: SCAN_API_VERSION,
+        });
       }
-      return res.status(500).json({
-        error: 'PassKit の来店回数更新に失敗しました',
-        hint: 'full / minimal の両方が拒否されました。Vercel の scan ログの PassKit 本文を確認してください。',
-        passkitStatus: updateRes.status,
-        detail: typeof detailObj === 'string' ? detailObj.substring(0, 1200) : detailObj,
-      });
+    } catch (e) {
+      results.updateMember = { error: e.message };
+      console.log(`[SCAN] updateMember err: ${e.message}`);
     }
 
-    return res.status(200).json({
-      success: true,
-      member: displayName,
-      visits: newPoints,
-      message: `${displayName}さん ${newPoints}回目の来店！`,
+    // 2b: PUT /members/member/points/set（絶対値）
+    const setBody = { id: member.id, programId: effectiveProgramId, points: newPoints };
+    try {
+      const r = await fetch(`${baseUrl}/members/member/points/set`, {
+        method: 'PUT',
+        headers: { Authorization: token, 'Content-Type': 'application/json' },
+        body: JSON.stringify(setBody),
+      });
+      const t = await r.text();
+      results.pointsSet = { status: r.status, ok: r.ok, body: t.substring(0, 300) };
+      console.log(`[SCAN] points/set: ${r.status} ${t.substring(0, 200)}`);
+      if (r.ok) {
+        let afterPoints = newPoints;
+        try { afterPoints = parseVisitCount(JSON.parse(t).points); } catch (_) {}
+        return res.status(200).json({
+          success: true,
+          member: displayName,
+          visits: afterPoints,
+          message: `${displayName}さん ${afterPoints}回目の来店！`,
+          via: 'points/set',
+          scanApiVersion: SCAN_API_VERSION,
+        });
+      }
+    } catch (e) {
+      results.pointsSet = { error: e.message };
+      console.log(`[SCAN] points/set err: ${e.message}`);
+    }
+
+    // 2c: PUT /members/member/points/earn（相対値 +1）
+    const earnBody = { id: member.id, programId: effectiveProgramId, points: 1 };
+    try {
+      const r = await fetch(`${baseUrl}/members/member/points/earn`, {
+        method: 'PUT',
+        headers: { Authorization: token, 'Content-Type': 'application/json' },
+        body: JSON.stringify(earnBody),
+      });
+      const t = await r.text();
+      results.pointsEarn = { status: r.status, ok: r.ok, body: t.substring(0, 300) };
+      console.log(`[SCAN] points/earn: ${r.status} ${t.substring(0, 200)}`);
+      if (r.ok) {
+        let afterPoints = newPoints;
+        try { afterPoints = parseVisitCount(JSON.parse(t).points); } catch (_) {}
+        return res.status(200).json({
+          success: true,
+          member: displayName,
+          visits: afterPoints,
+          message: `${displayName}さん ${afterPoints}回目の来店！`,
+          via: 'points/earn',
+          scanApiVersion: SCAN_API_VERSION,
+        });
+      }
+    } catch (e) {
+      results.pointsEarn = { error: e.message };
+      console.log(`[SCAN] points/earn err: ${e.message}`);
+    }
+
+    // 全失敗
+    console.error(`[SCAN] ALL UPDATES FAILED for ${member.id}`);
+    return res.status(500).json({
+      error: '来店回数を更新できませんでした',
+      memberId: member.id,
+      memberProgramId: member.programId,
+      envProgramId: programId,
+      currentPoints,
+      targetPoints: newPoints,
+      results,
+      scanApiVersion: SCAN_API_VERSION,
     });
 
   } catch (err) {
-    console.error(`[SCAN] ERROR: ${err.message}`);
-    return res.status(500).json({ error: err.message });
+    console.error(`[SCAN] FATAL: ${err.stack || err.message}`);
+    return res.status(500).json({
+      error: 'サーバーエラー',
+      detail: err.message,
+      scanApiVersion: SCAN_API_VERSION,
+    });
   }
 };

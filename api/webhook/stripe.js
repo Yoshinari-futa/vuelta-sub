@@ -7,7 +7,7 @@
 
 const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
 const nodemailer = require('nodemailer');
-const jwt = require('jsonwebtoken');
+const { getPassKitAuth } = require('../passkit-auth');
 const { TIER_BASE } = require('../passkit-tier-ids');
 
 // config は handler に付与（下部参照）
@@ -82,24 +82,6 @@ function getTransporter() {
     service: process.env.EMAIL_SERVICE || 'gmail',
     auth: { user, pass },
   });
-}
-
-// PassKit認証トークン生成（共通）
-function getPassKitAuth() {
-  const passkitApiKeyId = (process.env.PASSKIT_API_KEY || '').trim();
-  const passkitApiKeySecret = (process.env.PASSKIT_API_KEY_SECRET || '').trim();
-  if (!passkitApiKeyId || !passkitApiKeySecret) {
-    throw new Error('PASSKIT_API_KEY and PASSKIT_API_KEY_SECRET are required');
-  }
-  const now = Math.floor(Date.now() / 1000);
-  const token = jwt.sign(
-    { uid: passkitApiKeyId, iat: now, exp: now + 3600 },
-    passkitApiKeySecret,
-    { algorithm: 'HS256', header: { alg: 'HS256', typ: 'JWT' } }
-  );
-  let host = process.env.PASSKIT_HOST || 'api.pub2.passkit.io';
-  if (!host.startsWith('http')) host = 'https://' + host;
-  return { token, baseUrl: host.replace(/\/$/, '') };
 }
 
 // PassKit会員証削除（解約時）
@@ -187,30 +169,13 @@ async function deletePassKitMember(externalId) {
 
 // PassKit会員証生成（タイムアウト付き）
 async function generatePassKitCard({ email, name, customerId, tierId }) {
-  let passkitHost = process.env.PASSKIT_HOST || 'api.pub2.passkit.io';
-  if (!passkitHost.startsWith('http')) {
-    passkitHost = 'https://' + passkitHost;
-  }
-  const passkitBaseUrl = passkitHost.replace(/\/$/, '');
+  const { token, baseUrl: passkitBaseUrl } = getPassKitAuth();
   const programId = process.env.PASSKIT_PROGRAM_ID;
-
   const passkitApiKeyId = (process.env.PASSKIT_API_KEY || '').trim();
-  const passkitApiKeySecret = (process.env.PASSKIT_API_KEY_SECRET || '').trim();
 
   console.log(`[PASSKIT] host=${passkitBaseUrl}, programId=${programId}, tierId=${tierId}`);
   console.log(`[PASSKIT] apiKeyId=${passkitApiKeyId ? passkitApiKeyId.substring(0, 8) + '...' : 'MISSING'}`);
 
-  if (!passkitApiKeyId || !passkitApiKeySecret) {
-    throw new Error('PASSKIT_API_KEY and PASSKIT_API_KEY_SECRET are required');
-  }
-
-  // JWT認証トークン生成（PassKit公式形式: uid claim, no kid header）
-  const now = Math.floor(Date.now() / 1000);
-  const token = jwt.sign(
-    { uid: passkitApiKeyId, iat: now, exp: now + 3600 },
-    passkitApiKeySecret,
-    { algorithm: 'HS256', header: { alg: 'HS256', typ: 'JWT' } }
-  );
   const authHeader = token;
 
   // 会員作成 (5秒タイムアウト — Vercel Hobby 10秒制限対策)

@@ -9,9 +9,9 @@
  *   visits … 正しい来店回数（例: 2）
  */
 
-const jwt = require('jsonwebtoken');
-const parseVisitCount = require('./parse-visit-count');
-const { TIER_BASE } = require('./passkit-tier-ids');
+const parseVisitCount = require('../lib/parse-visit-count');
+const { getPassKitAuth } = require('../lib/passkit-auth');
+const { TIER_BASE } = require('../lib/passkit-tier-ids');
 
 function getSingleTierId() {
   return (process.env.PASSKIT_TIER_ID || TIER_BASE).trim();
@@ -54,23 +54,20 @@ module.exports = async function handler(req, res) {
   const v = parseVisitCount(visits);
   const targetTierId = getSingleTierId();
 
-  const apiKeyId = (process.env.PASSKIT_API_KEY || '').trim();
-  const apiKeySecret = (process.env.PASSKIT_API_KEY_SECRET || '').trim();
   const programId = process.env.PASSKIT_PROGRAM_ID;
-  let host = process.env.PASSKIT_HOST || 'api.pub2.passkit.io';
-  if (!host.startsWith('http')) host = 'https://' + host;
-  const baseUrl = host.replace(/\/$/, '');
-
-  if (!apiKeyId || !apiKeySecret || !programId) {
-    return res.status(500).json({ error: 'PASSKIT credentials or PROGRAM_ID missing' });
+  if (!programId) {
+    return res.status(500).json({ error: 'PASSKIT_PROGRAM_ID missing' });
   }
 
-  const now = Math.floor(Date.now() / 1000);
-  const token = jwt.sign(
-    { uid: apiKeyId, iat: now, exp: now + 3600 },
-    apiKeySecret,
-    { algorithm: 'HS256', header: { alg: 'HS256', typ: 'JWT' } }
-  );
+  let token;
+  let baseUrl;
+  try {
+    const auth = getPassKitAuth();
+    token = auth.token;
+    baseUrl = auth.baseUrl;
+  } catch (e) {
+    return res.status(500).json({ error: e.message || 'PASSKIT credentials missing' });
+  }
 
   try {
     const getRes = await fetch(`${baseUrl}/members/member/${memberId.trim()}`, {
@@ -90,19 +87,35 @@ module.exports = async function handler(req, res) {
       tierId: member.tierId,
     };
 
-    const putRes = await fetch(`${baseUrl}/members/member`, {
+    const effectiveProgramId =
+      (member.programId && String(member.programId).trim()) || programId;
+
+    // まず REST の setPoints（絶対値）。updateMember より確実なことが多い。
+    let putRes = await fetch(`${baseUrl}/members/member/points/set`, {
       method: 'PUT',
       headers: { Authorization: token, 'Content-Type': 'application/json' },
       body: JSON.stringify({
         id: member.id,
-        programId,
-        tierId: targetTierId,
         points: v,
-        person: member.person,
-        externalId: member.externalId,
       }),
     });
-    const putText = await putRes.text();
+    let putText = await putRes.text();
+
+    if (!putRes.ok) {
+      putRes = await fetch(`${baseUrl}/members/member`, {
+        method: 'PUT',
+        headers: { Authorization: token, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: member.id,
+          programId: effectiveProgramId,
+          tierId: targetTierId,
+          points: v,
+          person: member.person,
+          externalId: member.externalId,
+        }),
+      });
+      putText = await putRes.text();
+    }
 
     if (!putRes.ok) {
       return res.status(500).json({
@@ -111,6 +124,29 @@ module.exports = async function handler(req, res) {
         target: { visits: v, tierId: targetTierId },
         detail: putText.substring(0, 800),
       });
+    }
+
+    // setPoints だけでは tier が変わらないため、必要ならティアを共通の1種類に揃える
+    if (member.tierId !== targetTierId) {
+      const tierRes = await fetch(`${baseUrl}/members/member`, {
+        method: 'PUT',
+        headers: { Authorization: token, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: member.id,
+          programId: effectiveProgramId,
+          tierId: targetTierId,
+          points: v,
+        }),
+      });
+      const tierText = await tierRes.text();
+      if (!tierRes.ok) {
+        return res.status(500).json({
+          error: 'Points were set but tier sync failed',
+          before,
+          target: { visits: v, tierId: targetTierId },
+          detail: tierText.substring(0, 800),
+        });
+      }
     }
 
     return res.status(200).json({
