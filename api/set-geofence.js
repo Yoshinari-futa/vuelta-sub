@@ -16,8 +16,8 @@ const jwt = require('jsonwebtoken');
 
 const DEFAULT_LAT = 34.3893066;
 const DEFAULT_LNG = 132.4541823;
-/** Apple ロック画面は文字数に制限あり。短く */
-const DEFAULT_RELEVANT_TEXT = 'Near VUELTA — Welcome!';
+/** 近接時ロック画面・通知向け（環境変数 VUELTA_GEOFENCE_TEXT で上書き可） */
+const DEFAULT_RELEVANT_TEXT = "You're close. We're ready. Come in.";
 
 module.exports = async function handler(req, res) {
   const steps = [];
