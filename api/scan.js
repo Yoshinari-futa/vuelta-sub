@@ -3,24 +3,25 @@
  * バーコードスキャン → PassKit 来店回数（points）+1 & ティア自動昇格
  * Body: { memberId, secret }
  *
- * v11: ティア閾値変更
- *   Base(白): 0〜3回, Gold(金): 4〜15回, Silver(銀): 16〜50回, Black(黒): 51回以上
+ * v12: Rainbow ティア追加 (100回以上)
+ *   Base(白): 0〜3, Gold(金): 4〜15, Silver(銀): 16〜50, Black(黒): 51〜99, Rainbow(虹): 100+
  */
 
 const parseVisitCount = require('../lib/parse-visit-count');
 const { getPassKitAuth } = require('../lib/passkit-auth');
-const { TIER_BASE, TIER_SILVER, TIER_GOLD, TIER_BLACK } = require('../lib/passkit-tier-ids');
+const { TIER_BASE, TIER_SILVER, TIER_GOLD, TIER_BLACK, TIER_RAINBOW } = require('../lib/passkit-tier-ids');
 
-const SCAN_API_VERSION = '2026-04-10-v11-tiers';
+const SCAN_API_VERSION = '2026-04-10-v12-rainbow';
 
 // ── ティア判定 ──
-// Base(白): 0〜3回, Gold(金): 4〜15回, Silver(銀): 16〜50回, Black(黒): 51回以上
+// Base(白): 0〜3, Gold(金): 4〜15, Silver(銀): 16〜50, Black(黒): 51〜99, Rainbow(虹): 100+
 
 const TIER_THRESHOLDS = [
-  { min: 51, id: TIER_BLACK,  label: 'Black' },
-  { min: 16, id: TIER_SILVER, label: 'Silver' },
-  { min: 4,  id: TIER_GOLD,   label: 'Gold' },
-  { min: 0,  id: TIER_BASE,   label: 'Base' },
+  { min: 100, id: TIER_RAINBOW, label: 'Rainbow' },
+  { min: 51,  id: TIER_BLACK,   label: 'Black' },
+  { min: 16,  id: TIER_SILVER,  label: 'Silver' },
+  { min: 4,   id: TIER_GOLD,    label: 'Gold' },
+  { min: 0,   id: TIER_BASE,    label: 'Base' },
 ];
 
 /** 来店回数からティアIDを決定 */
