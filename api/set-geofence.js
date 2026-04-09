@@ -60,11 +60,10 @@ module.exports = async function handler(req, res) {
     // ── Step 1: 全メンバーを取得して passOverrides.locations を一括更新 ──
     steps.push({ step: 'list_members', programId });
 
-    const listBody = { programId, limit: 100 };
-    const listResp = await fetch(`${baseUrl}/members/member/list`, {
+    const listResp = await fetch(`${baseUrl}/members/member/list/${encodeURIComponent(programId)}`, {
       method: 'POST',
       headers,
-      body: JSON.stringify(listBody),
+      body: JSON.stringify({ limit: 100 }),
     });
     const listText = await listResp.text();
 
