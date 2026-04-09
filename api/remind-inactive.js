@@ -137,6 +137,7 @@ module.exports = async function handler(req, res) {
       }
 
       // パス更新 → Apple Wallet がプッシュ通知を自動送信
+      // metaData だけでなく passOverrides で表示内容を変えることで通知トリガー
       const updateBody = {
         id: m.id,
         programId: m.programId || programId,
@@ -144,6 +145,15 @@ module.exports = async function handler(req, res) {
           ...meta,
           reminderSent: new Date().toISOString(),
           reminderMessage: REMIND_MESSAGE_EN,
+        },
+        passOverrides: {
+          backFields: [
+            {
+              key: 'reminder',
+              label: 'Message from VUELTA',
+              value: REMIND_MESSAGE_EN,
+            },
+          ],
         },
       };
 
