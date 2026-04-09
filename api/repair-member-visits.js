@@ -1,6 +1,7 @@
 /**
  * POST /repair-member-visits
- * 旧バグで壊れた PassKit の points / tier を、正しい来店回数に合わせて上書きする。
+ * 旧バグで壊れた PassKit の points を、正しい来店回数に合わせて上書きする。
+ * ティアは全員共通（PASSKIT_TIER_ID または TIER_BASE）の1種類に揃える。
  *
  * Body: { secret, memberId, visits }
  *   secret … REPAIR_MEMBER_SECRET（未設定時は SCAN_PIN）
@@ -9,7 +10,12 @@
  */
 
 const jwt = require('jsonwebtoken');
-const { parseVisitCount, tierIdForVisitCount, tierColorLabel } = require('./visit-tier-helpers');
+const parseVisitCount = require('./parse-visit-count');
+const { TIER_BASE } = require('./passkit-tier-ids');
+
+function getSingleTierId() {
+  return (process.env.PASSKIT_TIER_ID || TIER_BASE).trim();
+}
 
 module.exports = async function handler(req, res) {
   res.setHeader('Content-Type', 'application/json; charset=utf-8');
@@ -46,7 +52,7 @@ module.exports = async function handler(req, res) {
   }
 
   const v = parseVisitCount(visits);
-  const targetTierId = tierIdForVisitCount(v);
+  const targetTierId = getSingleTierId();
 
   const apiKeyId = (process.env.PASSKIT_API_KEY || '').trim();
   const apiKeySecret = (process.env.PASSKIT_API_KEY_SECRET || '').trim();
@@ -102,7 +108,7 @@ module.exports = async function handler(req, res) {
       return res.status(500).json({
         error: 'PUT failed',
         before,
-        target: { visits: v, tierId: targetTierId, tierColor: tierColorLabel(targetTierId) },
+        target: { visits: v, tierId: targetTierId },
         detail: putText.substring(0, 800),
       });
     }
@@ -114,9 +120,8 @@ module.exports = async function handler(req, res) {
       after: {
         points: v,
         tierId: targetTierId,
-        tierColor: tierColorLabel(targetTierId),
       },
-      message: `来店 ${v} 回・${tierColorLabel(targetTierId).toUpperCase()} に修正しました。ウォレットは再表示が必要な場合があります。`,
+      message: `来店 ${v} 回に修正し、ティアを共通の1種類に揃えました。ウォレットは再表示が必要な場合があります。`,
     });
   } catch (err) {
     return res.status(500).json({ error: err.message });
