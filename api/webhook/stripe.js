@@ -437,7 +437,7 @@ async function handler(req, res) {
         return res.status(200).json({ received: true, warning: 'No email found' });
       }
 
-      // PassKit会員証生成（失敗しても続行）
+      // PassKit会員証生成（失敗しても続行 — ただしSlack警告を送る）
       let walletUrl = null;
       try {
         walletUrl = await generatePassKitCard({
@@ -449,6 +449,28 @@ async function handler(req, res) {
         console.log(`[PASSKIT] SUCCESS: ${walletUrl}`);
       } catch (err) {
         console.error(`[PASSKIT] FAILED: ${err.message}`);
+        // PassKit作成失敗をSlackに警告
+        const webhookUrl = process.env.SLACK_WEBHOOK_URL;
+        if (webhookUrl) {
+          try {
+            await fetch(webhookUrl, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                blocks: [
+                  { type: 'header', text: { type: 'plain_text', text: '⚠️ PassKit カード作成失敗', emoji: true } },
+                  { type: 'section', fields: [
+                    { type: 'mrkdwn', text: `*名前*\n${customerName}` },
+                    { type: 'mrkdwn', text: `*メール*\n${customerEmail}` },
+                  ]},
+                  { type: 'section', text: { type: 'mrkdwn', text: `*エラー*\n\`${err.message}\`\n\n手動で /create-member から再作成してください。` } },
+                ]
+              }),
+            });
+          } catch (slackErr) {
+            console.error(`[SLACK] Warning notification failed: ${slackErr.message}`);
+          }
+        }
       }
 
       // メール送信
@@ -478,17 +500,14 @@ async function handler(req, res) {
   }
 
   // ===== サブスク解約 =====
+  // 安全策: PassKitメンバーは自動削除しない（Slack通知のみ → 手動判断）
   if (event.type === 'customer.subscription.deleted') {
     const subscription = event.data.object;
     const customerId = subscription.customer;
     console.log(`[WEBHOOK] Subscription cancelled: customer=${customerId}`);
 
     try {
-      // PassKitメンバーを削除（externalIdはStripe customer ID）
-      const deleted = await deletePassKitMember(customerId);
-      console.log(`[PASSKIT] Member delete: ${deleted ? 'SUCCESS' : 'FAILED or NOT FOUND'}`);
-
-      // Slack通知
+      // Slack通知（削除は手動で /cleanup-member から行う）
       const webhookUrl = process.env.SLACK_WEBHOOK_URL;
       if (webhookUrl) {
         await fetch(webhookUrl, {
@@ -496,11 +515,11 @@ async function handler(req, res) {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             blocks: [
-              { type: 'header', text: { type: 'plain_text', text: '🚪 FIRST-DRINK PASS 解約', emoji: true } },
+              { type: 'header', text: { type: 'plain_text', text: '🚪 FIRST-DRINK PASS 解約通知', emoji: true } },
               { type: 'section', fields: [
                 { type: 'mrkdwn', text: `*Stripe ID*\n${customerId}` },
-                { type: 'mrkdwn', text: `*Walletカード*\n${deleted ? '✅ 削除済み' : '⚠️ 手動確認が必要'}` },
               ]},
+              { type: 'section', text: { type: 'mrkdwn', text: '⚠️ Walletカードは *自動削除されません*。\n必要に応じて手動で `/cleanup-member` から削除してください。' } },
             ]
           }),
         });
