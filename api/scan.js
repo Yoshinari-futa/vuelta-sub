@@ -3,22 +3,23 @@
  * バーコードスキャン → PassKit 来店回数（points）+1 & ティア自動昇格
  * Body: { memberId, secret }
  *
- * v10: 来店回数ベースのティア自動昇格
- *   Base (0-2) → Silver (3-9) → Gold (10-19) → Black (20+)
+ * v11: ティア閾値変更
+ *   Base(白): 0〜3回, Gold(金): 4〜15回, Silver(銀): 16〜50回, Black(黒): 51回以上
  */
 
 const parseVisitCount = require('../lib/parse-visit-count');
 const { getPassKitAuth } = require('../lib/passkit-auth');
 const { TIER_BASE, TIER_SILVER, TIER_GOLD, TIER_BLACK } = require('../lib/passkit-tier-ids');
 
-const SCAN_API_VERSION = '2026-04-10-v10-tiers';
+const SCAN_API_VERSION = '2026-04-10-v11-tiers';
 
 // ── ティア判定 ──
+// Base(白): 0〜3回, Gold(金): 4〜15回, Silver(銀): 16〜50回, Black(黒): 51回以上
 
 const TIER_THRESHOLDS = [
-  { min: 20, id: TIER_BLACK,  label: 'Black' },
-  { min: 10, id: TIER_GOLD,   label: 'Gold' },
-  { min: 3,  id: TIER_SILVER, label: 'Silver' },
+  { min: 51, id: TIER_BLACK,  label: 'Black' },
+  { min: 16, id: TIER_SILVER, label: 'Silver' },
+  { min: 4,  id: TIER_GOLD,   label: 'Gold' },
   { min: 0,  id: TIER_BASE,   label: 'Base' },
 ];
 
