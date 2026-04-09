@@ -11,7 +11,7 @@ const parseVisitCount = require('../lib/parse-visit-count');
 const { getPassKitAuth } = require('../lib/passkit-auth');
 const { TIER_BASE, TIER_SILVER, TIER_GOLD, TIER_BLACK, TIER_RAINBOW } = require('../lib/passkit-tier-ids');
 
-const SCAN_API_VERSION = '2026-04-10-v12-rainbow';
+const SCAN_API_VERSION = '2026-04-10-v13-geofence';
 
 // ── ティア判定 ──
 // Base(白): 0〜3, Gold(金): 4〜15, Silver(銀): 16〜50, Black(黒): 51〜99, Rainbow(虹): 100+
@@ -270,12 +270,22 @@ module.exports = async function handler(req, res) {
     // ── Step 2: ポイント更新 + ティア変更（3段階フォールバック） ──
     const results = {};
 
-    // 2a: PUT /members/member（ポイント＋ティアを同時更新）
+    // 2a: PUT /members/member（ポイント＋ティア＋ジオフェンスを同時更新）
     const updateBody = {
       id: member.id,
       programId: effectiveProgramId,
       tierId: newTier.id,
       points: newPoints,
+      passOverrides: {
+        locations: [
+          {
+            latitude: 34.3893066,
+            longitude: 132.4541823,
+            relevantText: 'VUELTAの近くにいます。今夜も一杯いかがですか？',
+            altitude: 0,
+          },
+        ],
+      },
     };
     try {
       const r = await fetch(`${baseUrl}/members/member`, {

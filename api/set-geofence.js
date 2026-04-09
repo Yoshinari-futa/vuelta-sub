@@ -1,254 +1,211 @@
 /**
- * PassKit ジオフェンス設定
+ * PassKit ジオフェンス設定（全ティア + 全メンバー）
  * GET/POST /set-geofence
  *
- * Apple Wallet の近接表示は **パスに埋め込まれた locations** に依存する。
- * PassKit の gRPC `Program` メッセージには locations フィールドがなく、
- * `PUT /members/program` に locations を載せても GET に反映されない／無視される可能性が高い。
- * 正しい経路は **ティアの passTemplateId に紐づく Pass Template** を `GET/PUT /template` で更新すること。
+ * v2: 全ティアのテンプレート locations を更新し、
+ *     さらに全メンバーの passOverrides.locations も一括更新。
  *
- * （半径は OS / ウォレット側の仕様。Apple は relevantText は短め推奨）
- *
- * 任意: ?secret=環境変数 GEOFENCE_SECRET と一致させると実行（未設定なら誰でも実行可）
- *
- * 環境変数（任意）:
- *   PASSKIT_TIER_ID — 未設定時はベース tier（passkit-tier-ids.js の TIER_BASE）
- *   VUELTA_GEOFENCE_LAT, VUELTA_GEOFENCE_LNG — デフォルトは広島・掛江ビル付近
- *   VUELTA_GEOFENCE_TEXT — ロック画面向け短文（英語推奨・長すぎない）
+ * 任意: ?secret=環境変数 GEOFENCE_SECRET と一致させると実行
  */
 
 const { getPassKitAuth } = require('../lib/passkit-auth');
-const { TIER_BASE } = require('../lib/passkit-tier-ids');
+const { TIER_BASE, TIER_SILVER, TIER_GOLD, TIER_BLACK, TIER_RAINBOW } = require('../lib/passkit-tier-ids');
 
 const DEFAULT_LAT = 34.3893066;
 const DEFAULT_LNG = 132.4541823;
-/** 近接時ロック画面・通知向け（環境変数 VUELTA_GEOFENCE_TEXT で上書き可） */
-const DEFAULT_RELEVANT_TEXT = "You're close. We're ready. Come in.";
+const DEFAULT_RELEVANT_TEXT = 'VUELTAの近くにいます。今夜も一杯いかがですか？';
 
-/** テンプレ PUT 用に読み取り専用っぽいフィールドを落とす */
-function stripTemplateReadOnly(obj) {
-  const o = JSON.parse(JSON.stringify(obj));
-  delete o.metrics;
-  delete o.created;
-  delete o.updated;
-  return o;
-}
-
-/**
- * 既存テンプレの location 1件目の形に合わせて座標・文言を上書き。
- * PassKit は lat/lon/lockScreenMessage 系と Apple の latitude/longitude/relevantText 系が混在し得る。
- */
-function buildLocationEntry(lat, lng, relevantText, existingFirst) {
-  const fallback = {
-    name: 'VUELTA',
-    latitude: lat,
-    longitude: lng,
-    relevantText,
-    altitude: 0,
-    lockScreenMessage: relevantText,
-  };
-
-  if (!existingFirst || typeof existingFirst !== 'object' || Object.keys(existingFirst).length === 0) {
-    return fallback;
-  }
-
-  const e = { ...existingFirst };
-  if ('latitude' in e) e.latitude = lat;
-  if ('longitude' in e) e.longitude = lng;
-  if ('lat' in e) e.lat = String(lat);
-  if ('lon' in e) e.lon = String(lng);
-  if ('relevantText' in e) e.relevantText = relevantText;
-  if ('lockScreenMessage' in e) e.lockScreenMessage = relevantText;
-  if ('altitude' in e) e.altitude = 0;
-  if ('alt' in e) e.alt = '0';
-
-  if ('latitude' in e || 'lat' in e) return e;
-  return fallback;
-}
+const ALL_TIERS = [TIER_BASE, TIER_GOLD, TIER_SILVER, TIER_BLACK, TIER_RAINBOW];
 
 module.exports = async function handler(req, res) {
   const steps = [];
 
   try {
+    // Auth check
     const geoSecret = (process.env.GEOFENCE_SECRET || '').trim();
     if (geoSecret) {
-      const q = req.query || {};
-      const bodySecret = (req.body && req.body.secret) || '';
-      const provided = q.secret || bodySecret || '';
+      const provided = (req.query || {}).secret || (req.body && req.body.secret) || '';
       if (provided !== geoSecret) {
-        return res.status(401).json({ error: 'Invalid or missing secret', hint: 'Set ?secret= or POST JSON { secret }' });
+        return res.status(401).json({ error: 'Invalid or missing secret' });
       }
     }
 
     const programId = process.env.PASSKIT_PROGRAM_ID;
-    const tierId = (process.env.PASSKIT_TIER_ID || TIER_BASE).trim();
-
     if (!programId) {
-      return res.status(500).json({ error: 'PASSKIT_API_KEY, PASSKIT_API_KEY_SECRET, PASSKIT_PROGRAM_ID required' });
+      return res.status(500).json({ error: 'PASSKIT_PROGRAM_ID required' });
     }
 
-    const lat = parseFloat(String(process.env.VUELTA_GEOFENCE_LAT || '').trim()) || DEFAULT_LAT;
-    const lng = parseFloat(String(process.env.VUELTA_GEOFENCE_LNG || '').trim()) || DEFAULT_LNG;
+    const lat = parseFloat(process.env.VUELTA_GEOFENCE_LAT || '') || DEFAULT_LAT;
+    const lng = parseFloat(process.env.VUELTA_GEOFENCE_LNG || '') || DEFAULT_LNG;
     const relevantText = (process.env.VUELTA_GEOFENCE_TEXT || DEFAULT_RELEVANT_TEXT).trim();
 
-    let token;
-    let passkitHost;
+    const locationEntry = {
+      latitude: lat,
+      longitude: lng,
+      relevantText,
+      altitude: 0,
+    };
+
+    let token, baseUrl;
     try {
       const auth = getPassKitAuth();
       token = auth.token;
-      passkitHost = auth.baseUrl;
+      baseUrl = auth.baseUrl;
     } catch (e) {
-      return res.status(500).json({ error: 'PASSKIT_API_KEY, PASSKIT_API_KEY_SECRET, PASSKIT_PROGRAM_ID required' });
+      return res.status(500).json({ error: 'PassKit auth failed: ' + e.message });
     }
 
-    const authHeaders = { Authorization: token, 'Content-Type': 'application/json' };
+    const headers = { Authorization: token, 'Content-Type': 'application/json' };
 
-    // --- 1) Tier → passTemplateId ---
-    const tierUrl = `${passkitHost}/members/tier/${programId}/${tierId}`;
-    steps.push({ step: 'get_tier', url: tierUrl });
+    // ── Step 1: 全メンバーを取得して passOverrides.locations を一括更新 ──
+    steps.push({ step: 'list_members', programId });
 
-    const tierResp = await fetch(tierUrl, { method: 'GET', headers: { Authorization: token } });
-    const tierText = await tierResp.text();
-    steps.push({ step: 'get_tier_response', status: tierResp.status, snippet: tierText.substring(0, 800) });
+    const listBody = { programId, limit: 100 };
+    const listResp = await fetch(`${baseUrl}/members/member/list`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(listBody),
+    });
+    const listText = await listResp.text();
 
-    let passTemplateId = null;
-    if (tierResp.ok) {
+    if (!listResp.ok) {
+      steps.push({ step: 'list_members_failed', status: listResp.status, body: listText.substring(0, 300) });
+    } else {
+      let members = [];
       try {
-        const tierData = JSON.parse(tierText);
-        passTemplateId = tierData.passTemplateId || null;
-        steps.push({ step: 'tier_parsed', passTemplateId: passTemplateId || 'MISSING' });
+        const listData = JSON.parse(listText);
+        // PassKit returns { result: member } for single or { result: [...] } for array
+        if (Array.isArray(listData)) {
+          members = listData;
+        } else if (listData.result) {
+          members = Array.isArray(listData.result) ? listData.result : [listData.result];
+        } else if (listData.id) {
+          members = [listData];
+        }
       } catch (e) {
-        steps.push({ step: 'tier_parse_error', message: e.message });
+        // Sometimes the list endpoint returns newline-delimited JSON
+        members = listText.split('\n').filter(Boolean).map(line => {
+          try {
+            const parsed = JSON.parse(line);
+            return parsed.result || parsed;
+          } catch { return null; }
+        }).filter(Boolean);
       }
+
+      steps.push({ step: 'members_found', count: members.length });
+
+      let updated = 0;
+      let failed = 0;
+
+      for (const m of members) {
+        if (!m.id) continue;
+        const updateBody = {
+          id: m.id,
+          programId: m.programId || programId,
+          passOverrides: {
+            locations: [locationEntry],
+          },
+        };
+
+        try {
+          const r = await fetch(`${baseUrl}/members/member`, {
+            method: 'PUT',
+            headers,
+            body: JSON.stringify(updateBody),
+          });
+          if (r.ok) {
+            updated++;
+          } else {
+            const errText = await r.text();
+            failed++;
+            if (updated === 0 && failed === 1) {
+              steps.push({ step: 'first_member_update_failed', status: r.status, body: errText.substring(0, 200) });
+            }
+          }
+        } catch (e) {
+          failed++;
+        }
+      }
+
+      steps.push({ step: 'members_updated', updated, failed });
     }
 
-    if (!passTemplateId) {
-      steps.push({
-        step: 'ABORT',
-        message: 'passTemplateId not found on tier. Set PASSKIT_TIER_ID to a tier that has a template.',
-      });
-      return res.status(422).json({
-        ok: false,
-        endpoint: 'set-geofence',
-        timestamp: new Date().toISOString(),
-        reason: 'no_passTemplateId',
-        steps,
-        howTo: {
-          production: 'https://subsc-webhook.vercel.app/set-geofence',
-          env: 'PASSKIT_PROGRAM_ID, PASSKIT_TIER_ID (default base tier), VUELTA_GEOFENCE_LAT/LNG/TEXT',
-        },
-      });
-    }
+    // ── Step 2: 各ティアのテンプレートにも locations を設定（テンプレAPI が動く場合） ──
+    for (const tierId of ALL_TIERS) {
+      try {
+        const tierUrl = `${baseUrl}/members/tier/${programId}/${tierId}`;
+        const tierResp = await fetch(tierUrl, { headers: { Authorization: token } });
+        if (!tierResp.ok) {
+          steps.push({ step: 'tier_skip', tierId, status: tierResp.status });
+          continue;
+        }
+        const tierData = await tierResp.json();
+        const passTemplateId = tierData.passTemplateId;
+        if (!passTemplateId) {
+          steps.push({ step: 'tier_no_template', tierId });
+          continue;
+        }
 
-    // --- 2) Template GET → merge locations → PUT /template ---
-    const templateGetUrl = `${passkitHost}/template/${passTemplateId}`;
-    steps.push({ step: 'get_template', url: templateGetUrl });
+        // Try multiple template API paths
+        const templatePaths = [
+          `/template/${passTemplateId}`,
+          `/passes/template/${passTemplateId}`,
+        ];
 
-    const tplResp = await fetch(templateGetUrl, { method: 'GET', headers: { Authorization: token } });
-    const tplText = await tplResp.text();
-    steps.push({ step: 'get_template_response', status: tplResp.status, snippet: tplText.substring(0, 1200) });
+        let templateData = null;
+        let workingPath = null;
 
-    if (!tplResp.ok) {
-      steps.push({ step: 'ABORT', message: 'Could not load pass template for geofence update.' });
-      return res.status(502).json({
-        ok: false,
-        endpoint: 'set-geofence',
-        timestamp: new Date().toISOString(),
-        reason: 'template_get_failed',
-        steps,
-      });
-    }
+        for (const tp of templatePaths) {
+          try {
+            const r = await fetch(`${baseUrl}${tp}`, { headers: { Authorization: token } });
+            if (r.ok) {
+              templateData = await r.json();
+              workingPath = tp;
+              break;
+            }
+          } catch {}
+        }
 
-    let templateData;
-    try {
-      templateData = JSON.parse(tplText);
-    } catch (e) {
-      steps.push({ step: 'template_parse_error', message: e.message });
-      return res.status(502).json({
-        ok: false,
-        endpoint: 'set-geofence',
-        timestamp: new Date().toISOString(),
-        reason: 'template_parse_failed',
-        steps,
-      });
-    }
+        if (!templateData) {
+          steps.push({ step: 'template_get_failed', tierId, passTemplateId });
+          continue;
+        }
 
-    const existingLocs = Array.isArray(templateData.locations) ? templateData.locations : [];
-    const sample = existingLocs[0] || null;
-    const locationEntry = buildLocationEntry(lat, lng, relevantText, sample);
+        // Update template with locations
+        const updatePayload = { ...templateData };
+        delete updatePayload.metrics;
+        delete updatePayload.created;
+        delete updatePayload.updated;
+        updatePayload.locations = [locationEntry];
 
-    const updatePayload = stripTemplateReadOnly(templateData);
-    updatePayload.locations = [locationEntry];
-
-    const updateUrl = `${passkitHost}/template`;
-    steps.push({
-      step: 'update_template',
-      url: updateUrl,
-      passTemplateId,
-      coords: { lat, lng },
-      relevantText,
-      locationKeys: Object.keys(locationEntry),
-    });
-
-    const updateResp = await fetch(updateUrl, {
-      method: 'PUT',
-      headers: authHeaders,
-      body: JSON.stringify(updatePayload),
-    });
-    const updateText = await updateResp.text();
-    steps.push({
-      step: 'update_template_response',
-      status: updateResp.status,
-      ok: updateResp.ok,
-      body: updateText.substring(0, 2000),
-    });
-
-    if (updateResp.ok) {
-      steps.push({
-        step: 'SUCCESS',
-        message:
-          'Template locations updated. Existing passes may need refresh / re-save in Wallet for all users to pick up.',
-      });
-    }
-
-    // --- 3) 検証: GET template again（locations が返るか） ---
-    try {
-      const verifyResp = await fetch(templateGetUrl, { method: 'GET', headers: { Authorization: token } });
-      const verifyText = await verifyResp.text();
-      if (verifyResp.ok) {
-        const v = JSON.parse(verifyText);
-        steps.push({
-          step: 'verify_template',
-          hasLocations: Array.isArray(v.locations),
-          locationsCount: Array.isArray(v.locations) ? v.locations.length : 0,
-          firstLocationKeys: v.locations && v.locations[0] ? Object.keys(v.locations[0]) : [],
+        const putResp = await fetch(`${baseUrl}/template`, {
+          method: 'PUT',
+          headers,
+          body: JSON.stringify(updatePayload),
         });
-      } else {
-        steps.push({ step: 'verify_template_skipped', status: verifyResp.status });
+        steps.push({
+          step: 'template_updated',
+          tierId,
+          passTemplateId,
+          status: putResp.status,
+          ok: putResp.ok,
+        });
+      } catch (e) {
+        steps.push({ step: 'tier_error', tierId, error: e.message });
       }
-    } catch (e) {
-      steps.push({ step: 'verify_template_error', message: e.message });
     }
-  } catch (err) {
-    steps.push({ step: 'error', message: err.message, stack: err.stack ? err.stack.substring(0, 400) : '' });
-  }
 
-  const lastOk = steps.some((s) => s.step === 'SUCCESS');
-  res.status(lastOk ? 200 : 500).json({
-    ok: lastOk,
-    endpoint: 'set-geofence',
-    note: 'Geofence is applied via PUT /template (not /members/program). See steps.',
-    timestamp: new Date().toISOString(),
-    target: {
-      lat: parseFloat(String(process.env.VUELTA_GEOFENCE_LAT || '').trim()) || DEFAULT_LAT,
-      lng: parseFloat(String(process.env.VUELTA_GEOFENCE_LNG || '').trim()) || DEFAULT_LNG,
-      label: 'VUELTA（広島・大手町 / 掛江ビル付近。環境変数で上書き可）',
-    },
-    steps,
-    howTo: {
-      production: 'https://subsc-webhook.vercel.app/set-geofence',
-      optionalSecret: 'GEOFENCE_SECRET を Vercel に設定した場合は ?secret=... が必要',
-      env: 'PASSKIT_TIER_ID, VUELTA_GEOFENCE_LAT, VUELTA_GEOFENCE_LNG, VUELTA_GEOFENCE_TEXT',
-    },
-  });
+    const success = steps.some(s => s.step === 'members_updated' && s.updated > 0);
+    res.status(success ? 200 : 500).json({
+      ok: success,
+      endpoint: 'set-geofence-v2',
+      timestamp: new Date().toISOString(),
+      target: { lat, lng, relevantText },
+      steps,
+    });
+
+  } catch (err) {
+    steps.push({ step: 'error', message: err.message });
+    res.status(500).json({ ok: false, endpoint: 'set-geofence-v2', steps });
+  }
 };
