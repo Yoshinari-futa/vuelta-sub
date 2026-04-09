@@ -289,10 +289,19 @@ module.exports = async function handler(req, res) {
       console.log(`[SCAN] normalize tier → ${targetTierId} (visits=${newPoints})`);
     }
 
+    // PassKit 上の会員の programId を優先（Vercel の PASSKIT_PROGRAM_ID と不一致だと PUT が必ず失敗する）
+    const effectiveProgramId =
+      (member.programId && String(member.programId).trim()) || programId;
+    if (member.programId && programId && member.programId !== programId) {
+      console.warn(
+        `[SCAN] env PASSKIT_PROGRAM_ID (${programId}) !== member.programId (${member.programId}) — using member.programId for update`
+      );
+    }
+
     // 2. 来店回数 +1、ティアは常に共通の1種類
     const updatePayload = {
       id: member.id,
-      programId,
+      programId: effectiveProgramId,
       tierId: targetTierId,
       points: newPoints,
       person: member.person,
@@ -328,13 +337,26 @@ module.exports = async function handler(req, res) {
     if (!updateRes.ok) {
       const minimalPayload = {
         id: member.id,
-        programId,
+        programId: effectiveProgramId,
         tierId: targetTierId,
         points: Math.floor(Number(newPoints)),
       };
       const retry = await putMember(minimalPayload, 'minimal');
       updateRes = retry;
       updateText = retry.text;
+    }
+
+    // tierId（共通1種類）が別プログラムでは無効な場合がある → 元の tier のまま points のみ更新
+    if (!updateRes.ok && member.tierId && member.tierId !== targetTierId) {
+      const pointsOnlyPayload = {
+        id: member.id,
+        programId: effectiveProgramId,
+        tierId: member.tierId,
+        points: Math.floor(Number(newPoints)),
+      };
+      const retry2 = await putMember(pointsOnlyPayload, 'points-only-keep-tier');
+      updateRes = retry2;
+      updateText = retry2.text;
     }
 
     if (!updateRes.ok) {
