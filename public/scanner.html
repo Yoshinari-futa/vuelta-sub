@@ -89,10 +89,27 @@
   /* Result */
   .result { width: 100%; max-width: 400px; padding: 0 16px; margin-top: 12px; display: none; }
   .result.show { display: block; }
-  .result-card { background: #1a1a1a; border-radius: 14px; padding: 24px; text-align: center; }
+  .result-card { background: #1a1a1a; border-radius: 14px; padding: 24px; text-align: center; transition: border-color 0.4s; }
   .result-card .name { font-size: 18px; font-weight: 600; margin-bottom: 6px; }
   .result-card .visits { font-size: 48px; font-weight: 700; color: #2d5a3d; line-height: 1.1; }
   .result-card .visits-label { font-size: 12px; color: #888; letter-spacing: 0.1em; text-transform: uppercase; margin-top: 4px; }
+  .result-card .tier-badge {
+    display: inline-block; margin-top: 12px; padding: 6px 18px;
+    border-radius: 50px; font-size: 12px; font-weight: 700;
+    letter-spacing: 0.12em; text-transform: uppercase;
+  }
+  .tier-white  { background: #e0e0e0; color: #333; }
+  .tier-silver { background: linear-gradient(135deg, #b0b0b0, #d8d8d8); color: #222; }
+  .tier-gold   { background: linear-gradient(135deg, #c8a84e, #f0d77b); color: #3a2e00; }
+  .tier-black  { background: linear-gradient(135deg, #1a1a1a, #444); color: #fff; border: 1px solid #666; }
+  .tier-upgrade {
+    display: none; margin-top: 10px; font-size: 14px; font-weight: 700;
+    animation: tierPulse 1.2s ease-in-out 3;
+  }
+  @keyframes tierPulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.7; transform: scale(1.1); }
+  }
   .result-card .msg { font-size: 13px; color: #aaa; margin-top: 14px; }
   .result-card.error { border: 1px solid #e74c3c; }
   .result-card.error .name { color: #e74c3c; }
@@ -153,6 +170,8 @@
     <div class="name" id="rName"></div>
     <div class="visits" id="rVisits"></div>
     <div class="visits-label" id="rVisitsLabel">VISITS</div>
+    <div class="tier-badge" id="rTierBadge" style="display:none"></div>
+    <div class="tier-upgrade" id="rTierUpgrade"></div>
     <div class="msg" id="rMsg"></div>
   </div>
 </div>
@@ -563,12 +582,33 @@
       const visitsEl = document.getElementById('rVisits');
       const msgEl = document.getElementById('rMsg');
 
+      const tierBadge = document.getElementById('rTierBadge');
+      const tierUpgrade = document.getElementById('rTierUpgrade');
+      tierBadge.style.display = 'none';
+      tierBadge.className = 'tier-badge';
+      tierUpgrade.style.display = 'none';
+
       if (resp.ok && data.success) {
         card.className = 'result-card';
         nameEl.textContent = data.member || 'Member';
         visitsEl.textContent = data.visits;
         document.getElementById('rVisitsLabel').textContent = 'VISITS';
         msgEl.textContent = data.message || '';
+
+        // ティアバッジ表示
+        if (data.tierColor) {
+          const tierLabels = { white: 'WHITE', silver: 'SILVER', gold: 'GOLD', black: 'BLACK' };
+          tierBadge.textContent = tierLabels[data.tierColor] || data.tierColor.toUpperCase();
+          tierBadge.classList.add('tier-' + data.tierColor);
+          tierBadge.style.display = 'inline-block';
+          // ティア昇格演出
+          if (data.tierChanged) {
+            tierUpgrade.textContent = '🎉 ' + (tierLabels[data.tierColor] || '') + ' にランクアップ！';
+            tierUpgrade.style.display = 'block';
+            tierUpgrade.style.color = data.tierColor === 'gold' ? '#c8a84e' : data.tierColor === 'black' ? '#fff' : '#b0b0b0';
+            if (navigator.vibrate) navigator.vibrate([100, 50, 100, 50, 200]);
+          }
+        }
       } else {
         card.className = 'result-card error';
         if (resp.status === 401) {

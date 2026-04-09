@@ -67,9 +67,9 @@ function tierIdForVisitCount(visits) {
   const silver = process.env.PASSKIT_TIER_ID_SILVER || 'silver';
   const gold = process.env.PASSKIT_TIER_ID_GOLD || 'gold';
   const black = process.env.PASSKIT_TIER_ID_BLACK || 'black';
-  const minSilver = parseInt(String(process.env.VISITS_MIN_FOR_SILVER || '1').trim(), 10) || 1;
-  const minGold = parseInt(String(process.env.VISITS_MIN_FOR_GOLD || '5').trim(), 10) || 5;
-  const minBlack = parseInt(String(process.env.VISITS_MIN_FOR_BLACK || '15').trim(), 10) || 15;
+  const minSilver = parseInt(String(process.env.VISITS_MIN_FOR_SILVER || '3').trim(), 10) || 3;
+  const minGold = parseInt(String(process.env.VISITS_MIN_FOR_GOLD || '10').trim(), 10) || 10;
+  const minBlack = parseInt(String(process.env.VISITS_MIN_FOR_BLACK || '20').trim(), 10) || 20;
 
   const v = Number(visits);
   if (v < minSilver) return white;
