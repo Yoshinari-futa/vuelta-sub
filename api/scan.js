@@ -270,18 +270,23 @@ module.exports = async function handler(req, res) {
     // ── Step 2: ポイント更新 + ティア変更（3段階フォールバック） ──
     const results = {};
 
-    // 2a: PUT /members/member（ポイント＋ティア＋ジオフェンスを同時更新）
+    // 2a: PUT /members/member（ポイント＋ティア＋ジオフェンス＋最終来店日を同時更新）
     const updateBody = {
       id: member.id,
       programId: effectiveProgramId,
       tierId: newTier.id,
       points: newPoints,
+      metaData: {
+        ...(member.metaData || {}),
+        lastVisit: new Date().toISOString(),
+        reminderSent: '',  // スキャン時にリマインドフラグをリセット
+      },
       passOverrides: {
         locations: [
           {
             latitude: 34.3893066,
             longitude: 132.4541823,
-            relevantText: 'You're near VUELTA. How about a drink tonight?',
+            relevantText: "You're near VUELTA. How about a drink tonight?",
             altitude: 0,
           },
         ],

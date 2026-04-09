@@ -74,6 +74,10 @@
     {
       "src": "/repair-member-visits",
       "dest": "/api/repair-member-visits.js"
+    },
+    {
+      "src": "/remind-inactive",
+      "dest": "/api/remind-inactive.js"
     }
   ]
 }
