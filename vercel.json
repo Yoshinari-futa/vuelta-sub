@@ -24,14 +24,6 @@
       "dest": "/api/health.js"
     },
     {
-      "src": "/test-email",
-      "dest": "/api/test-email.js"
-    },
-    {
-      "src": "/test-passkit",
-      "dest": "/api/test-passkit.js"
-    },
-    {
       "src": "/set-geofence",
       "dest": "/api/set-geofence.js"
     },
@@ -71,14 +63,6 @@
     {
       "src": "/list-members",
       "dest": "/api/list-members.js"
-    },
-    {
-      "src": "/fix-barcode-format",
-      "dest": "/api/fix-barcode-format.js"
-    },
-    {
-      "src": "/diagnose",
-      "dest": "/api/diagnose.js"
     }
   ]
 }
