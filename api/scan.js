@@ -3,27 +3,24 @@
  * バーコードスキャン → PassKit 来店回数（points）+1
  * Body: { memberId, secret }
  *
- * v8: シンプル化。メンバー検索 → points PUT → フォールバック
+ * v9: altId検索追加・points上書きバグ修正
  */
 
 const parseVisitCount = require('../lib/parse-visit-count');
 const { getPassKitAuth } = require('../lib/passkit-auth');
 
-const SCAN_API_VERSION = '2026-04-10-v8-simple';
+const SCAN_API_VERSION = '2026-04-10-v9-altid';
 
 // ── helpers ──
 
-/** スキャン文字列からPassKit member IDを抽出 */
+/** スキャン文字列からPassKit IDを抽出 */
 function extractId(raw) {
   if (!raw || typeof raw !== 'string') return '';
   let val = raw.trim();
-  // pskt.io URL
   const urlMatch = val.match(/pskt\.io\/(?:c\/)?([A-Za-z0-9_-]{10,})/i);
   if (urlMatch) return urlMatch[1];
-  // 一般URL末尾
   const pathMatch = val.match(/\/([A-Za-z0-9_-]{15,})(?:[?#]|$)/);
   if (pathMatch) return pathMatch[1];
-  // そのままID
   if (/^[A-Za-z0-9_-]{10,}$/.test(val)) return val;
   return val;
 }
@@ -96,6 +93,7 @@ module.exports = async function handler(req, res) {
 
     // ── Step 1: メンバー検索 ──
     let member = null;
+    let foundVia = '';
 
     // 1a: ID直接
     try {
@@ -104,7 +102,8 @@ module.exports = async function handler(req, res) {
       });
       if (r.ok) {
         member = await r.json();
-        console.log(`[SCAN] Found by id: ${member.id}`);
+        foundVia = 'directId';
+        console.log(`[SCAN] Found by id: ${member.id} program=${member.programId} points=${member.points}`);
       } else {
         console.log(`[SCAN] id lookup: ${r.status}`);
       }
@@ -120,7 +119,8 @@ module.exports = async function handler(req, res) {
         });
         if (r.ok) {
           member = await r.json();
-          console.log(`[SCAN] Found by externalId: ${member.id}`);
+          foundVia = 'externalId';
+          console.log(`[SCAN] Found by externalId: ${member.id} points=${member.points}`);
         } else {
           console.log(`[SCAN] extId lookup: ${r.status}`);
         }
@@ -129,7 +129,7 @@ module.exports = async function handler(req, res) {
       }
     }
 
-    // 1c: リスト検索（fuzzy）
+    // 1c: リスト検索（id, externalId, altId で一致）
     if (!member && programId) {
       try {
         const r = await fetch(`${baseUrl}/members/member/list/${programId}`, {
@@ -140,15 +140,48 @@ module.exports = async function handler(req, res) {
         if (r.ok) {
           const members = parseListResponse(await r.text());
           console.log(`[SCAN] list: ${members.length} members`);
+
+          // 完全一致（id, externalId, altId）
           member = members.find(m =>
             m.id === cleanId ||
             m.externalId === cleanId ||
-            (cleanId.length >= 8 && (
-              (m.id && (m.id.includes(cleanId) || cleanId.includes(m.id))) ||
-              (m.externalId && (m.externalId.includes(cleanId) || cleanId.includes(m.externalId)))
-            ))
+            (m.passMetaData && m.passMetaData.altId === cleanId)
           );
-          if (member) console.log(`[SCAN] Found in list: ${member.id}`);
+          if (member) {
+            foundVia = 'listExact';
+          }
+
+          // 部分一致（バーコードが長い文字列にIDを含む場合）
+          if (!member && cleanId.length >= 8) {
+            for (const m of members) {
+              const candidates = [
+                m.id,
+                m.externalId,
+                m.passMetaData?.altId,
+              ].filter(Boolean);
+              for (const c of candidates) {
+                if (cleanId.includes(c) || c.includes(cleanId)) {
+                  member = m;
+                  foundVia = `listFuzzy(${c})`;
+                  break;
+                }
+              }
+              if (member) break;
+            }
+          }
+
+          if (member) {
+            console.log(`[SCAN] Found in list via ${foundVia}: ${member.id} points=${member.points}`);
+          } else {
+            // デバッグ: 全メンバーのIDを出力
+            const ids = members.map(m => ({
+              id: m.id,
+              extId: m.externalId || '',
+              altId: m.passMetaData?.altId || '',
+              points: m.points,
+            }));
+            console.log(`[SCAN] No match in list. Members: ${JSON.stringify(ids)}`);
+          }
         } else {
           console.log(`[SCAN] list: ${r.status}`);
         }
@@ -166,12 +199,16 @@ module.exports = async function handler(req, res) {
       });
     }
 
-    // メンバーをフルGETで更新
+    // メンバーをフルGETで最新データに更新
     try {
       const r = await fetch(`${baseUrl}/members/member/${member.id}`, {
         headers: { Authorization: token },
       });
-      if (r.ok) member = await r.json();
+      if (r.ok) {
+        const fresh = await r.json();
+        console.log(`[SCAN] Refreshed: id=${fresh.id} points=${fresh.points} program=${fresh.programId}`);
+        member = fresh;
+      }
     } catch (_) { /* use existing */ }
 
     const currentPoints = parseVisitCount(member.points);
@@ -179,9 +216,9 @@ module.exports = async function handler(req, res) {
     const p = member.person || {};
     const displayName = p.displayName || [p.forename, p.surname].filter(Boolean).join(' ') || 'Member';
 
-    console.log(`[SCAN] ${displayName}: ${currentPoints} → ${newPoints}`);
+    console.log(`[SCAN] ${displayName}: ${currentPoints} → ${newPoints} (foundVia=${foundVia})`);
 
-    // メンバーの実 programId を優先（env と不一致の場合がある）
+    // メンバーの実 programId を優先
     const effectiveProgramId = (member.programId || programId || '').trim();
     if (member.programId && programId && member.programId !== programId) {
       console.warn(`[SCAN] programId mismatch: env=${programId} member=${member.programId}`);
@@ -190,7 +227,7 @@ module.exports = async function handler(req, res) {
     // ── Step 2: ポイント更新（3段階フォールバック） ──
     const results = {};
 
-    // 2a: PUT /members/member（全フィールド更新）
+    // 2a: PUT /members/member
     const updateBody = {
       id: member.id,
       programId: effectiveProgramId,
@@ -207,14 +244,14 @@ module.exports = async function handler(req, res) {
       results.updateMember = { status: r.status, ok: r.ok, body: t.substring(0, 300) };
       console.log(`[SCAN] updateMember: ${r.status} ${t.substring(0, 200)}`);
       if (r.ok) {
-        let afterPoints = newPoints;
-        try { afterPoints = parseVisitCount(JSON.parse(t).points); } catch (_) {}
         return res.status(200).json({
           success: true,
           member: displayName,
-          visits: afterPoints,
-          message: `${displayName}さん ${afterPoints}回目の来店！`,
+          visits: newPoints,
+          previousVisits: currentPoints,
+          message: `${displayName}さん ${newPoints}回目の来店！`,
           via: 'updateMember',
+          foundVia,
           scanApiVersion: SCAN_API_VERSION,
         });
       }
@@ -223,7 +260,7 @@ module.exports = async function handler(req, res) {
       console.log(`[SCAN] updateMember err: ${e.message}`);
     }
 
-    // 2b: PUT /members/member/points/set（絶対値）
+    // 2b: PUT /members/member/points/set
     const setBody = { id: member.id, programId: effectiveProgramId, points: newPoints };
     try {
       const r = await fetch(`${baseUrl}/members/member/points/set`, {
@@ -235,14 +272,14 @@ module.exports = async function handler(req, res) {
       results.pointsSet = { status: r.status, ok: r.ok, body: t.substring(0, 300) };
       console.log(`[SCAN] points/set: ${r.status} ${t.substring(0, 200)}`);
       if (r.ok) {
-        let afterPoints = newPoints;
-        try { afterPoints = parseVisitCount(JSON.parse(t).points); } catch (_) {}
         return res.status(200).json({
           success: true,
           member: displayName,
-          visits: afterPoints,
-          message: `${displayName}さん ${afterPoints}回目の来店！`,
+          visits: newPoints,
+          previousVisits: currentPoints,
+          message: `${displayName}さん ${newPoints}回目の来店！`,
           via: 'points/set',
+          foundVia,
           scanApiVersion: SCAN_API_VERSION,
         });
       }
@@ -251,7 +288,7 @@ module.exports = async function handler(req, res) {
       console.log(`[SCAN] points/set err: ${e.message}`);
     }
 
-    // 2c: PUT /members/member/points/earn（相対値 +1）
+    // 2c: PUT /members/member/points/earn
     const earnBody = { id: member.id, programId: effectiveProgramId, points: 1 };
     try {
       const r = await fetch(`${baseUrl}/members/member/points/earn`, {
@@ -263,14 +300,14 @@ module.exports = async function handler(req, res) {
       results.pointsEarn = { status: r.status, ok: r.ok, body: t.substring(0, 300) };
       console.log(`[SCAN] points/earn: ${r.status} ${t.substring(0, 200)}`);
       if (r.ok) {
-        let afterPoints = newPoints;
-        try { afterPoints = parseVisitCount(JSON.parse(t).points); } catch (_) {}
         return res.status(200).json({
           success: true,
           member: displayName,
-          visits: afterPoints,
-          message: `${displayName}さん ${afterPoints}回目の来店！`,
+          visits: newPoints,
+          previousVisits: currentPoints,
+          message: `${displayName}さん ${newPoints}回目の来店！`,
           via: 'points/earn',
+          foundVia,
           scanApiVersion: SCAN_API_VERSION,
         });
       }
@@ -288,6 +325,7 @@ module.exports = async function handler(req, res) {
       envProgramId: programId,
       currentPoints,
       targetPoints: newPoints,
+      foundVia,
       results,
       scanApiVersion: SCAN_API_VERSION,
     });
