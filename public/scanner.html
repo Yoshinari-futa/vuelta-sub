@@ -156,7 +156,11 @@
   const PIN_KEY = 'vuelta_scan_pin';
   let staffPin = sessionStorage.getItem(PIN_KEY) || '';
   let scanning = false;
+  let scannerMode = ''; // 'native' or 'lib'
   let html5QrCode = null;
+  let nativeStream = null;
+  let nativeDetector = null;
+  let nativeAnimFrame = null;
   const debugEl = document.getElementById('debug');
 
   function dbg(msg) { debugEl.textContent = msg; console.log('[SCANNER] ' + msg); }
@@ -216,13 +220,37 @@
     const val = document.getElementById('manualInput').value.trim();
     if (!val) return;
     scanning = false;
-    if (html5QrCode) { try { await html5QrCode.stop(); } catch(_) {} }
+    stopAllScanners();
     document.getElementById('hint').textContent = '確認中...';
     dbg('manual: ' + val);
     await sendToApi(val);
   }
 
-  // ── Camera ──
+  // ── Stop all scanners ──
+  function stopAllScanners() {
+    // Stop native BarcodeDetector
+    if (nativeAnimFrame) { cancelAnimationFrame(nativeAnimFrame); nativeAnimFrame = null; }
+    if (nativeStream) {
+      nativeStream.getTracks().forEach(t => t.stop());
+      nativeStream = null;
+    }
+    // Stop html5-qrcode
+    if (html5QrCode) { try { html5QrCode.stop(); } catch(_) {} }
+  }
+
+  // ── Check native BarcodeDetector support ──
+  async function checkNativeBarcodeDetector() {
+    if (!('BarcodeDetector' in window)) return false;
+    try {
+      const formats = await BarcodeDetector.getSupportedFormats();
+      // PDF417 が必要（PassKit のバーコード形式）
+      return formats.includes('pdf417');
+    } catch (e) {
+      return false;
+    }
+  }
+
+  // ── Camera (main entry) ──
   async function startCamera() {
     scanning = true;
     document.getElementById('result').classList.remove('show');
@@ -231,10 +259,91 @@
     document.getElementById('manualInput').value = '';
     dbg('');
 
+    stopAllScanners();
+
+    const hasNative = await checkNativeBarcodeDetector();
+    if (hasNative) {
+      dbg('Native BarcodeDetector (PDF417対応)');
+      await startNativeScanner();
+    } else {
+      dbg('Fallback: html5-qrcode');
+      await startLibScanner();
+    }
+  }
+
+  // ══════════════════════════════════════════════
+  //  Native BarcodeDetector (Chrome/Safari mobile)
+  //  PDF417 をネイティブにデコードできる
+  // ══════════════════════════════════════════════
+  async function startNativeScanner() {
+    scannerMode = 'native';
+    const videoEl = document.getElementById('video');
+    videoEl.style.display = 'block';
+
+    // html5-qrcode の DOM を非表示
+    const readerDiv = document.getElementById('qr-reader');
+    if (readerDiv) readerDiv.style.display = 'none';
+
+    try {
+      nativeStream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } }
+      });
+      videoEl.srcObject = nativeStream;
+      await videoEl.play();
+
+      nativeDetector = new BarcodeDetector({
+        formats: ['pdf417', 'qr_code', 'aztec', 'data_matrix', 'code_128', 'code_39']
+      });
+
+      dbg('カメラ起動OK (Native)');
+      nativeScanLoop(videoEl);
+    } catch (err) {
+      document.getElementById('hint').textContent = 'カメラを許可してください';
+      dbg('Camera error: ' + err.message);
+    }
+  }
+
+  function nativeScanLoop(videoEl) {
+    if (!scanning || !nativeDetector) return;
+
+    nativeDetector.detect(videoEl).then(barcodes => {
+      if (!scanning) return;
+
+      if (barcodes.length > 0) {
+        const bc = barcodes[0];
+        const rawText = bc.rawValue || '';
+        const format = bc.format || 'unknown';
+        dbg('format=' + format + ' text=' + rawText.substring(0, 40));
+
+        if (rawText.trim()) {
+          scanning = false;
+          if (navigator.vibrate) navigator.vibrate(100);
+          stopAllScanners();
+          const memberId = extractMemberId(rawText);
+          if (memberId) {
+            document.getElementById('hint').textContent = '確認中...';
+            sendToApi(memberId);
+            return;
+          }
+        }
+      }
+
+      // 次フレーム
+      nativeAnimFrame = requestAnimationFrame(() => nativeScanLoop(videoEl));
+    }).catch(err => {
+      dbg('detect error: ' + err.message);
+      nativeAnimFrame = requestAnimationFrame(() => nativeScanLoop(videoEl));
+    });
+  }
+
+  // ══════════════════════════════════════════════
+  //  Fallback: html5-qrcode ライブラリ
+  //  BarcodeDetector非対応ブラウザ用
+  // ══════════════════════════════════════════════
+  async function startLibScanner() {
+    scannerMode = 'lib';
     const videoEl = document.getElementById('video');
     videoEl.style.display = 'none';
-
-    if (html5QrCode) { try { await html5QrCode.stop(); } catch (_) {} }
 
     const cameraBox = document.querySelector('.camera-box');
     let readerDiv = document.getElementById('qr-reader');
@@ -245,6 +354,7 @@
       readerDiv.style.height = '100%';
       cameraBox.insertBefore(readerDiv, cameraBox.firstChild);
     }
+    readerDiv.style.display = 'block';
 
     const formats = [
       Html5QrcodeSupportedFormats.QR_CODE,
@@ -265,14 +375,14 @@
           qrbox: (w, h) => ({ width: Math.floor(Math.min(w, h) * 0.85), height: Math.floor(Math.min(w, h) * 0.5) }),
           aspectRatio: 1.0,
         },
-        onScanSuccess,
+        onLibScanSuccess,
         () => {}
       );
       const innerVideo = readerDiv.querySelector('video');
       if (innerVideo) { innerVideo.style.objectFit = 'cover'; innerVideo.style.borderRadius = '16px'; }
       const scanRegion = document.getElementById('qr-shaded-region');
       if (scanRegion) scanRegion.style.display = 'none';
-      dbg('カメラ起動OK');
+      dbg('カメラ起動OK (html5-qrcode)');
     } catch (err) {
       document.getElementById('hint').textContent = 'カメラを許可してください';
       dbg('Camera error: ' + err);
@@ -294,21 +404,16 @@
     return val;
   }
 
-  // ── Try to decode raw bytes from PDF417 ──
+  // ── Try to decode raw bytes from PDF417 (fallback lib only) ──
   function tryDecodeRawBytes(decodedResult) {
     try {
-      // html5-qrcode の内部 ZXing result から rawBytes を取得
       const rawBytes = decodedResult?.result?.rawBytes;
       if (rawBytes && rawBytes.length > 0) {
-        // UTF-8で試す
         const utf8 = new TextDecoder('utf-8').decode(new Uint8Array(rawBytes));
         if (utf8 && utf8.trim().length > 0) return utf8.trim();
-        // Latin-1で試す
         const latin1 = new TextDecoder('iso-8859-1').decode(new Uint8Array(rawBytes));
         if (latin1 && latin1.trim().length > 0) return latin1.trim();
       }
-
-      // ZXing の内部テキストを直接取得
       const text = decodedResult?.result?.text;
       if (text && text.trim().length > 0) return text.trim();
     } catch (e) {
@@ -317,8 +422,8 @@
     return '';
   }
 
-  // ── Scan success ──
-  async function onScanSuccess(decodedText, decodedResult) {
+  // ── html5-qrcode scan success (fallback) ──
+  async function onLibScanSuccess(decodedText, decodedResult) {
     if (!scanning) return;
     scanning = false;
 
@@ -327,7 +432,6 @@
 
     const format = decodedResult?.result?.format?.formatName || 'unknown';
 
-    // テキストが空の場合、rawBytesから復元を試みる
     let rawText = decodedText || '';
     if (!rawText.trim()) {
       rawText = tryDecodeRawBytes(decodedResult);
@@ -339,10 +443,8 @@
     const memberId = extractMemberId(rawText);
 
     if (!memberId) {
-      // PDF417が空の場合 → 手入力を促す
       document.getElementById('hint').textContent = 'バーコード読み取り失敗 → 下のIDを手入力してください';
       dbg('format=' + format + ' decoded=(empty) — 手入力してください');
-      // カメラは止めたまま、手入力に集中
       document.getElementById('manualInput').focus();
       return;
     }
