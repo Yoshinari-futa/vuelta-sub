@@ -310,14 +310,32 @@ module.exports = async function handler(req, res) {
       updatePayload.passOverrides = member.passOverrides;
     }
 
-    const updateRes = await fetch(`${baseUrl}/members/member`, {
-      method: 'PUT',
-      headers: { 'Authorization': token, 'Content-Type': 'application/json' },
-      body: JSON.stringify(updatePayload),
-    });
+    const putMember = async (payload, label) => {
+      const r = await fetch(`${baseUrl}/members/member`, {
+        method: 'PUT',
+        headers: { 'Authorization': token, 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const t = await r.text();
+      console.log(`[SCAN] UPDATE (${label}): ${r.status} - ${t.substring(0, 500)}`);
+      return { ok: r.ok, status: r.status, text: t };
+    };
 
-    const updateText = await updateRes.text();
-    console.log(`[SCAN] UPDATE: ${updateRes.status} - ${updateText.substring(0, 500)}`);
+    let updateRes = await putMember(updatePayload, 'full');
+    let updateText = updateRes.text;
+
+    // person / passOverrides 等で PassKit が弾く場合がある → 最小フィールドだけ再試行
+    if (!updateRes.ok) {
+      const minimalPayload = {
+        id: member.id,
+        programId,
+        tierId: targetTierId,
+        points: Math.floor(Number(newPoints)),
+      };
+      const retry = await putMember(minimalPayload, 'minimal');
+      updateRes = retry;
+      updateText = retry.text;
+    }
 
     if (!updateRes.ok) {
       let detailObj = updateText;
@@ -327,7 +345,8 @@ module.exports = async function handler(req, res) {
         /* plain text */
       }
       return res.status(500).json({
-        error: 'Failed to update member',
+        error: 'PassKit の来店回数更新に失敗しました',
+        hint: 'full / minimal の両方が拒否されました。Vercel の scan ログの PassKit 本文を確認してください。',
         passkitStatus: updateRes.status,
         detail: typeof detailObj === 'string' ? detailObj.substring(0, 1200) : detailObj,
       });
