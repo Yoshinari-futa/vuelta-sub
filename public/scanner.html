@@ -93,6 +93,13 @@
   .result-card .name { font-size: 18px; font-weight: 600; margin-bottom: 6px; }
   .result-card .visits { font-size: 48px; font-weight: 700; color: #2d5a3d; line-height: 1.1; }
   .result-card .visits-label { font-size: 12px; color: #888; letter-spacing: 0.1em; text-transform: uppercase; margin-top: 4px; }
+  .result-card .tier-badge { display: inline-block; margin-top: 10px; padding: 4px 16px; border-radius: 20px; font-size: 13px; font-weight: 700; letter-spacing: 0.08em; }
+  .tier-Base { background: #e8e8e8; color: #333; }
+  .tier-Silver { background: #C0C0C0; color: #222; }
+  .tier-Gold { background: #C8A84E; color: #fff; }
+  .tier-Black { background: #1a1a1a; color: #fff; border: 1px solid #555; }
+  .tier-upgrade { animation: pulse 0.6s ease-in-out 3; }
+  @keyframes pulse { 0%,100% { transform: scale(1); } 50% { transform: scale(1.15); } }
   .result-card .msg { font-size: 13px; color: #aaa; margin-top: 14px; }
   .result-card.error { border: 1px solid #e74c3c; }
   .result-card.error .name { color: #e74c3c; }
@@ -153,6 +160,7 @@
     <div class="name" id="rName"></div>
     <div class="visits" id="rVisits"></div>
     <div class="visits-label" id="rVisitsLabel">VISITS</div>
+    <div class="tier-badge" id="rTier"></div>
     <div class="msg" id="rMsg"></div>
   </div>
 </div>
@@ -601,9 +609,19 @@
         if (data.warning) okMsg += (okMsg ? '\n\n' : '') + data.warning;
         if (data.scanApiVersion) okMsg += (okMsg ? '\n' : '') + 'scanApiVersion: ' + data.scanApiVersion;
         msgEl.textContent = okMsg;
+        // ティアバッジ表示
+        var tierEl = document.getElementById('rTier');
+        if (data.tier) {
+          tierEl.textContent = data.tier;
+          tierEl.className = 'tier-badge tier-' + data.tier + (data.tierChanged ? ' tier-upgrade' : '');
+          tierEl.style.display = '';
+        } else {
+          tierEl.style.display = 'none';
+        }
         if (navigator.vibrate) navigator.vibrate(80);
       } else {
         card.className = 'result-card error';
+        document.getElementById('rTier').style.display = 'none';
         if (resp.status === 401) {
           nameEl.textContent = 'PIN エラー';
           visitsEl.textContent = '✕';
