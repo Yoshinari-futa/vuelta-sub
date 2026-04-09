@@ -75,6 +75,10 @@
     {
       "src": "/fix-barcode-format",
       "dest": "/api/fix-barcode-format.js"
+    },
+    {
+      "src": "/diagnose",
+      "dest": "/api/diagnose.js"
     }
   ]
 }
