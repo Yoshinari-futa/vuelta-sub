@@ -256,6 +256,22 @@ module.exports = async function handler(req, res) {
         existingMembers: memberIds,
       });
     }
+
+    // 一覧フォールバック等で薄いオブジェクトのときがある。更新前に必ず ID でフル GET し直す（2回目 PUT 失敗の予防）
+    try {
+      const refreshRes = await fetch(`${baseUrl}/members/member/${member.id}`, {
+        headers: { Authorization: token },
+      });
+      if (refreshRes.ok) {
+        member = await refreshRes.json();
+        console.log(`[SCAN] Refreshed member by id: ${member.id}`);
+      } else {
+        console.warn(`[SCAN] Refresh GET failed ${refreshRes.status}, using prior member object`);
+      }
+    } catch (e) {
+      console.warn(`[SCAN] Refresh GET error: ${e.message}`);
+    }
+
     const currentPoints = parseVisitCount(member.points);
     const newPoints = currentPoints + 1;
     const p = member.person || {};
@@ -274,24 +290,47 @@ module.exports = async function handler(req, res) {
     }
 
     // 2. 来店回数 +1、ティアは常に共通の1種類
+    const updatePayload = {
+      id: member.id,
+      programId,
+      tierId: targetTierId,
+      points: newPoints,
+      person: member.person,
+      externalId: member.externalId,
+    };
+    if (member.groupingIdentifier) updatePayload.groupingIdentifier = member.groupingIdentifier;
+    if (member.tierPoints !== undefined && member.tierPoints !== null) {
+      updatePayload.tierPoints = member.tierPoints;
+    }
+    if (member.secondaryPoints !== undefined && member.secondaryPoints !== null) {
+      updatePayload.secondaryPoints = member.secondaryPoints;
+    }
+    if (member.optOut === true || member.optOut === false) updatePayload.optOut = member.optOut;
+    if (member.passOverrides && typeof member.passOverrides === 'object') {
+      updatePayload.passOverrides = member.passOverrides;
+    }
+
     const updateRes = await fetch(`${baseUrl}/members/member`, {
       method: 'PUT',
       headers: { 'Authorization': token, 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        id: member.id,
-        programId: programId,
-        tierId: targetTierId,
-        points: newPoints,
-        person: member.person,
-        externalId: member.externalId,
-      }),
+      body: JSON.stringify(updatePayload),
     });
 
     const updateText = await updateRes.text();
-    console.log(`[SCAN] UPDATE: ${updateRes.status} - ${updateText.substring(0, 200)}`);
+    console.log(`[SCAN] UPDATE: ${updateRes.status} - ${updateText.substring(0, 500)}`);
 
     if (!updateRes.ok) {
-      return res.status(500).json({ error: 'Failed to update points', detail: updateText.substring(0, 100) });
+      let detailObj = updateText;
+      try {
+        detailObj = JSON.parse(updateText);
+      } catch (_) {
+        /* plain text */
+      }
+      return res.status(500).json({
+        error: 'Failed to update member',
+        passkitStatus: updateRes.status,
+        detail: typeof detailObj === 'string' ? detailObj.substring(0, 1200) : detailObj,
+      });
     }
 
     return res.status(200).json({

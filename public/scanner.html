@@ -583,6 +583,10 @@
           visitsEl.textContent = '—';
           document.getElementById('rVisitsLabel').textContent = '';
           let errMsg = data.error || 'スキャンに失敗しました';
+          if (data.detail) {
+            errMsg += '\n\n' + (typeof data.detail === 'object' ? JSON.stringify(data.detail, null, 2) : String(data.detail));
+          }
+          if (data.passkitStatus) errMsg += '\n(status ' + data.passkitStatus + ')';
           errMsg += '\n[id: ' + memberId + ']';
           msgEl.style.whiteSpace = 'pre-wrap';
           msgEl.style.fontSize = '11px';
