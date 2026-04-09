@@ -71,6 +71,10 @@
     {
       "src": "/list-members",
       "dest": "/api/list-members.js"
+    },
+    {
+      "src": "/fix-barcode-format",
+      "dest": "/api/fix-barcode-format.js"
     }
   ]
 }

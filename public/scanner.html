@@ -11,28 +11,20 @@
     background: #0a0a0a; color: #fff; min-height: 100dvh;
     display: flex; flex-direction: column; align-items: center;
   }
-
-  /* ── Header ── */
-  .header {
-    padding: 20px 0 12px;
-    text-align: center;
-  }
+  .header { padding: 20px 0 12px; text-align: center; }
   .header h1 {
     font-size: 14px; font-weight: 600; letter-spacing: 0.15em;
     text-transform: uppercase; color: #ccc;
   }
 
-  /* ── PIN overlay ── */
+  /* PIN */
   .pin-overlay {
     position: fixed; inset: 0; z-index: 100;
     background: #0a0a0a; display: flex; flex-direction: column;
     align-items: center; justify-content: center; gap: 20px;
   }
   .pin-overlay.hidden { display: none; }
-  .pin-overlay h2 {
-    font-size: 13px; font-weight: 600; letter-spacing: 0.12em;
-    text-transform: uppercase; color: #999;
-  }
+  .pin-overlay h2 { font-size: 13px; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase; color: #999; }
   .pin-input {
     width: 200px; padding: 14px 16px; border-radius: 12px;
     border: 1px solid #333; background: #1a1a1a; color: #fff;
@@ -48,18 +40,13 @@
   .pin-btn:active { background: #1e3d29; }
   .pin-error { color: #e74c3c; font-size: 12px; height: 16px; }
 
-  /* ── Camera ── */
-  .camera-wrap {
-    width: 100%; max-width: 400px; padding: 0 16px;
-    position: relative;
-  }
+  /* Camera */
+  .camera-wrap { width: 100%; max-width: 400px; padding: 0 16px; position: relative; }
   .camera-box {
     width: 100%; aspect-ratio: 1; border-radius: 16px;
     overflow: hidden; position: relative; background: #111;
   }
-  #video {
-    width: 100%; height: 100%; object-fit: cover;
-  }
+  #video { width: 100%; height: 100%; object-fit: cover; }
   .scan-line {
     position: absolute; top: 50%; left: 10%; right: 10%;
     height: 2px; background: #2d5a3d; opacity: 0.8;
@@ -75,42 +62,38 @@
   .corner.bl { bottom: 12px; left: 12px; border-width: 0 0 3px 3px; border-radius: 0 0 0 6px; }
   .corner.br { bottom: 12px; right: 12px; border-width: 0 3px 3px 0; border-radius: 0 0 6px 0; }
 
-  .hint {
-    text-align: center; padding: 16px 0 8px;
-    font-size: 12px; color: #666; letter-spacing: 0.04em;
-  }
+  .hint { text-align: center; padding: 16px 0 8px; font-size: 12px; color: #666; letter-spacing: 0.04em; }
+  .debug { width: 100%; max-width: 400px; padding: 4px 16px; font-size: 10px; color: #555; word-break: break-all; text-align: center; min-height: 16px; }
 
-  /* ── Debug ── */
-  .debug {
-    width: 100%; max-width: 400px; padding: 4px 16px;
-    font-size: 10px; color: #555; word-break: break-all;
-    text-align: center; min-height: 16px;
+  /* Manual entry */
+  .manual-wrap {
+    width: 100%; max-width: 400px; padding: 8px 16px;
+    display: none;
   }
+  .manual-wrap.show { display: block; }
+  .manual-label { font-size: 11px; color: #888; text-align: center; margin-bottom: 6px; }
+  .manual-row { display: flex; gap: 8px; }
+  .manual-input {
+    flex: 1; padding: 12px 14px; border-radius: 10px;
+    border: 1px solid #333; background: #1a1a1a; color: #fff;
+    font-size: 15px; font-family: monospace;
+  }
+  .manual-input:focus { outline: none; border-color: #2d5a3d; }
+  .manual-send {
+    padding: 12px 18px; border-radius: 10px; border: none;
+    background: #2d5a3d; color: #fff; font-size: 13px;
+    font-weight: 600; cursor: pointer; white-space: nowrap;
+  }
+  .manual-send:active { background: #1e3d29; }
 
-  /* ── Result ── */
-  .result {
-    width: 100%; max-width: 400px; padding: 0 16px;
-    margin-top: 12px; display: none;
-  }
+  /* Result */
+  .result { width: 100%; max-width: 400px; padding: 0 16px; margin-top: 12px; display: none; }
   .result.show { display: block; }
-  .result-card {
-    background: #1a1a1a; border-radius: 14px; padding: 24px;
-    text-align: center;
-  }
-  .result-card .name {
-    font-size: 18px; font-weight: 600; margin-bottom: 6px;
-  }
-  .result-card .visits {
-    font-size: 48px; font-weight: 700; color: #2d5a3d;
-    line-height: 1.1;
-  }
-  .result-card .visits-label {
-    font-size: 12px; color: #888; letter-spacing: 0.1em;
-    text-transform: uppercase; margin-top: 4px;
-  }
-  .result-card .msg {
-    font-size: 13px; color: #aaa; margin-top: 14px;
-  }
+  .result-card { background: #1a1a1a; border-radius: 14px; padding: 24px; text-align: center; }
+  .result-card .name { font-size: 18px; font-weight: 600; margin-bottom: 6px; }
+  .result-card .visits { font-size: 48px; font-weight: 700; color: #2d5a3d; line-height: 1.1; }
+  .result-card .visits-label { font-size: 12px; color: #888; letter-spacing: 0.1em; text-transform: uppercase; margin-top: 4px; }
+  .result-card .msg { font-size: 13px; color: #aaa; margin-top: 14px; }
   .result-card.error { border: 1px solid #e74c3c; }
   .result-card.error .name { color: #e74c3c; }
 
@@ -119,15 +102,14 @@
     margin: 16px auto 32px; padding: 14px;
     border-radius: 50px; border: 1px solid #333;
     background: transparent; color: #ccc;
-    font-size: 13px; font-weight: 600; letter-spacing: 0.06em;
-    cursor: pointer;
+    font-size: 13px; font-weight: 600; letter-spacing: 0.06em; cursor: pointer;
   }
   .next-btn:active { background: #1a1a1a; }
 </style>
 </head>
 <body>
 
-<!-- PIN認証画面 -->
+<!-- PIN -->
 <div class="pin-overlay" id="pinOverlay">
   <h2>STAFF PIN</h2>
   <input type="password" class="pin-input" id="pinInput" inputmode="numeric" maxlength="12" placeholder="••••">
@@ -135,23 +117,28 @@
   <div class="pin-error" id="pinError"></div>
 </div>
 
-<!-- メイン画面 -->
-<div class="header">
-  <h1>VUELTA — Scan</h1>
-</div>
+<!-- Main -->
+<div class="header"><h1>VUELTA — Scan</h1></div>
 
 <div class="camera-wrap">
   <div class="camera-box">
     <video id="video" autoplay playsinline muted></video>
     <div class="scan-line"></div>
-    <div class="corner tl"></div>
-    <div class="corner tr"></div>
-    <div class="corner bl"></div>
-    <div class="corner br"></div>
+    <div class="corner tl"></div><div class="corner tr"></div>
+    <div class="corner bl"></div><div class="corner br"></div>
   </div>
 </div>
 <div class="hint" id="hint">バーコードをかざしてください</div>
 <div class="debug" id="debug"></div>
+
+<!-- Manual entry (always visible after PIN auth) -->
+<div class="manual-wrap" id="manualWrap">
+  <div class="manual-label">カード下のIDを手入力</div>
+  <div class="manual-row">
+    <input type="text" class="manual-input" id="manualInput" placeholder="3E0LQK3TfL..." autocomplete="off" autocorrect="off" spellcheck="false">
+    <button class="manual-send" id="manualSend">送信</button>
+  </div>
+</div>
 
 <div class="result" id="result">
   <div class="result-card" id="resultCard">
@@ -163,7 +150,6 @@
 </div>
 <button class="next-btn" id="nextBtn" style="display:none" onclick="resetScan()">NEXT SCAN →</button>
 
-<!-- QR / Barcode 読み取りライブラリ -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html5-qrcode/2.3.8/html5-qrcode.min.js"></script>
 
 <script>
@@ -173,29 +159,22 @@
   let html5QrCode = null;
   const debugEl = document.getElementById('debug');
 
-  function dbg(msg) {
-    debugEl.textContent = msg;
-    console.log('[SCANNER] ' + msg);
-  }
+  function dbg(msg) { debugEl.textContent = msg; console.log('[SCANNER] ' + msg); }
 
-  // ── PIN認証 ──
+  // ── PIN ──
   const pinOverlay = document.getElementById('pinOverlay');
   const pinInput = document.getElementById('pinInput');
   const pinBtn = document.getElementById('pinBtn');
   const pinError = document.getElementById('pinError');
 
-  // URLパラメータにpin=xxxxがあればPIN画面スキップ
   const urlPin = new URLSearchParams(window.location.search).get('pin');
-  if (urlPin) {
-    staffPin = urlPin;
-    sessionStorage.setItem(PIN_KEY, staffPin);
-  }
+  if (urlPin) { staffPin = urlPin; sessionStorage.setItem(PIN_KEY, staffPin); }
 
   if (staffPin) {
     fetch('/scan?secret=' + encodeURIComponent(staffPin))
       .then(r => r.json())
       .then(d => {
-        if (d.valid) { pinOverlay.classList.add('hidden'); startCamera(); }
+        if (d.valid) { pinOverlay.classList.add('hidden'); onAuth(); }
         else { sessionStorage.removeItem(PIN_KEY); staffPin = ''; }
       })
       .catch(() => { sessionStorage.removeItem(PIN_KEY); staffPin = ''; });
@@ -207,8 +186,7 @@
   async function submitPin() {
     const val = pinInput.value.trim();
     if (!val) { pinError.textContent = 'PINを入力してください'; return; }
-    pinBtn.disabled = true;
-    pinBtn.textContent = '...';
+    pinBtn.disabled = true; pinBtn.textContent = '...';
     try {
       const resp = await fetch('/scan?secret=' + encodeURIComponent(val));
       const data = await resp.json();
@@ -216,33 +194,47 @@
         staffPin = val;
         sessionStorage.setItem(PIN_KEY, staffPin);
         pinOverlay.classList.add('hidden');
-        startCamera();
+        onAuth();
       } else {
         pinError.textContent = 'PINが正しくありません';
-        pinInput.value = '';
-        pinInput.focus();
+        pinInput.value = ''; pinInput.focus();
       }
-    } catch (err) {
-      pinError.textContent = '通信エラー';
-    }
-    pinBtn.disabled = false;
-    pinBtn.textContent = 'ENTER';
+    } catch (err) { pinError.textContent = '通信エラー'; }
+    pinBtn.disabled = false; pinBtn.textContent = 'ENTER';
   }
 
-  // ── カメラ起動 & バーコード読み取り ──
+  function onAuth() {
+    document.getElementById('manualWrap').classList.add('show');
+    startCamera();
+  }
+
+  // ── Manual entry ──
+  document.getElementById('manualSend').addEventListener('click', doManualSend);
+  document.getElementById('manualInput').addEventListener('keydown', (e) => { if (e.key === 'Enter') doManualSend(); });
+
+  async function doManualSend() {
+    const val = document.getElementById('manualInput').value.trim();
+    if (!val) return;
+    scanning = false;
+    if (html5QrCode) { try { await html5QrCode.stop(); } catch(_) {} }
+    document.getElementById('hint').textContent = '確認中...';
+    dbg('manual: ' + val);
+    await sendToApi(val);
+  }
+
+  // ── Camera ──
   async function startCamera() {
     scanning = true;
     document.getElementById('result').classList.remove('show');
     document.getElementById('nextBtn').style.display = 'none';
     document.getElementById('hint').textContent = 'バーコードをかざしてください';
+    document.getElementById('manualInput').value = '';
     dbg('');
 
     const videoEl = document.getElementById('video');
     videoEl.style.display = 'none';
 
-    if (html5QrCode) {
-      try { await html5QrCode.stop(); } catch (_) {}
-    }
+    if (html5QrCode) { try { await html5QrCode.stop(); } catch (_) {} }
 
     const cameraBox = document.querySelector('.camera-box');
     let readerDiv = document.getElementById('qr-reader');
@@ -254,7 +246,6 @@
       cameraBox.insertBefore(readerDiv, cameraBox.firstChild);
     }
 
-    // PDF417, QR, Aztec, DataMatrix 等すべてのフォーマットを明示的にサポート
     const formats = [
       Html5QrcodeSupportedFormats.QR_CODE,
       Html5QrcodeSupportedFormats.PDF_417,
@@ -262,7 +253,6 @@
       Html5QrcodeSupportedFormats.DATA_MATRIX,
       Html5QrcodeSupportedFormats.CODE_128,
       Html5QrcodeSupportedFormats.CODE_39,
-      Html5QrcodeSupportedFormats.EAN_13,
     ];
 
     html5QrCode = new Html5Qrcode('qr-reader', { formatsToSupport: formats, verbose: false });
@@ -272,77 +262,97 @@
         { facingMode: 'environment' },
         {
           fps: 10,
-          qrbox: (w, h) => ({
-            width: Math.floor(Math.min(w, h) * 0.8),
-            height: Math.floor(Math.min(w, h) * 0.5),
-          }),
+          qrbox: (w, h) => ({ width: Math.floor(Math.min(w, h) * 0.85), height: Math.floor(Math.min(w, h) * 0.5) }),
           aspectRatio: 1.0,
         },
         onScanSuccess,
-        () => {} // ignore failures
+        () => {}
       );
-      // 内部 video のスタイルを上書き
       const innerVideo = readerDiv.querySelector('video');
-      if (innerVideo) {
-        innerVideo.style.objectFit = 'cover';
-        innerVideo.style.borderRadius = '16px';
-      }
-      // ライブラリが生成する装飾を隠す
+      if (innerVideo) { innerVideo.style.objectFit = 'cover'; innerVideo.style.borderRadius = '16px'; }
       const scanRegion = document.getElementById('qr-shaded-region');
       if (scanRegion) scanRegion.style.display = 'none';
       dbg('カメラ起動OK');
     } catch (err) {
       document.getElementById('hint').textContent = 'カメラを許可してください';
       dbg('Camera error: ' + err);
-      console.error('Camera error:', err);
     }
   }
 
-  // ── バーコードの値からメンバーIDを抽出 ──
+  // ── Extract member ID from barcode ──
   function extractMemberId(raw) {
     if (!raw) return '';
     let val = raw.trim();
-
-    // PassKit URL形式: https://pub2.pskt.io/c/MEMBER_ID or https://pub2.pskt.io/MEMBER_ID
-    // 末尾のパスセグメント（英数字22文字前後のPassKit ID）を取る
+    // URL: https://pub2.pskt.io/c/MEMBER_ID or /MEMBER_ID
     const urlMatch = val.match(/pskt\.io\/(?:c\/)?([A-Za-z0-9_-]{10,})/);
     if (urlMatch) return urlMatch[1];
-
-    // 一般URL: 末尾パスからIDっぽい文字列を取る
-    const pathMatch = val.match(/\/([A-Za-z0-9_-]{15,})(?:\?|$)/);
+    // Generic URL: last path segment
+    const pathMatch = val.match(/\/([A-Za-z0-9_-]{15,})(?:[?#]|$)/);
     if (pathMatch) return pathMatch[1];
-
-    // URL全体ではなく、英数字のIDそのもの
+    // Raw alphanumeric ID
     if (/^[A-Za-z0-9_-]{10,}$/.test(val)) return val;
-
-    // それ以外はそのまま返す（サーバー側で対処）
     return val;
   }
 
-  // ── スキャン成功 ──
+  // ── Try to decode raw bytes from PDF417 ──
+  function tryDecodeRawBytes(decodedResult) {
+    try {
+      // html5-qrcode の内部 ZXing result から rawBytes を取得
+      const rawBytes = decodedResult?.result?.rawBytes;
+      if (rawBytes && rawBytes.length > 0) {
+        // UTF-8で試す
+        const utf8 = new TextDecoder('utf-8').decode(new Uint8Array(rawBytes));
+        if (utf8 && utf8.trim().length > 0) return utf8.trim();
+        // Latin-1で試す
+        const latin1 = new TextDecoder('iso-8859-1').decode(new Uint8Array(rawBytes));
+        if (latin1 && latin1.trim().length > 0) return latin1.trim();
+      }
+
+      // ZXing の内部テキストを直接取得
+      const text = decodedResult?.result?.text;
+      if (text && text.trim().length > 0) return text.trim();
+    } catch (e) {
+      console.log('[SCANNER] rawBytes decode error:', e);
+    }
+    return '';
+  }
+
+  // ── Scan success ──
   async function onScanSuccess(decodedText, decodedResult) {
     if (!scanning) return;
     scanning = false;
 
-    // 振動フィードバック
     if (navigator.vibrate) navigator.vibrate(100);
-
     try { await html5QrCode.stop(); } catch (_) {}
 
-    // デコード結果をデバッグ表示
     const format = decodedResult?.result?.format?.formatName || 'unknown';
-    dbg('format=' + format + ' raw=' + decodedText);
 
-    document.getElementById('hint').textContent = '確認中...';
+    // テキストが空の場合、rawBytesから復元を試みる
+    let rawText = decodedText || '';
+    if (!rawText.trim()) {
+      rawText = tryDecodeRawBytes(decodedResult);
+      dbg('format=' + format + ' rawBytes→' + (rawText || '(empty)'));
+    } else {
+      dbg('format=' + format + ' text=' + rawText.substring(0, 40));
+    }
 
-    const memberId = extractMemberId(decodedText);
-    dbg('format=' + format + ' id=' + memberId);
+    const memberId = extractMemberId(rawText);
 
     if (!memberId) {
-      showError('バーコードの値を読み取れませんでした', 'raw: ' + decodedText);
+      // PDF417が空の場合 → 手入力を促す
+      document.getElementById('hint').textContent = 'バーコード読み取り失敗 → 下のIDを手入力してください';
+      dbg('format=' + format + ' decoded=(empty) — 手入力してください');
+      // カメラは止めたまま、手入力に集中
+      document.getElementById('manualInput').focus();
       return;
     }
 
+    document.getElementById('hint').textContent = '確認中...';
+    await sendToApi(memberId);
+  }
+
+  // ── API call ──
+  async function sendToApi(memberId) {
     try {
       const resp = await fetch('/scan', {
         method: 'POST',
@@ -368,7 +378,7 @@
           nameEl.textContent = 'PIN エラー';
           visitsEl.textContent = '✕';
           document.getElementById('rVisitsLabel').textContent = '';
-          msgEl.textContent = 'PINが正しくありません。リロードしてください。';
+          msgEl.textContent = 'PINが正しくありません';
           sessionStorage.removeItem(PIN_KEY);
         } else {
           nameEl.textContent = 'エラー';
@@ -376,7 +386,6 @@
           document.getElementById('rVisitsLabel').textContent = '';
           let errMsg = data.error || 'スキャンに失敗しました';
           errMsg += '\n[id: ' + memberId + ']';
-          if (data.scannedValue) errMsg += '\n[scanned: ' + data.scannedValue + ']';
           msgEl.style.whiteSpace = 'pre-wrap';
           msgEl.style.fontSize = '11px';
           msgEl.textContent = errMsg;
@@ -388,29 +397,12 @@
       document.getElementById('hint').textContent = '';
 
     } catch (err) {
-      showError('通信エラー', err.message);
+      document.getElementById('hint').textContent = '通信エラー: ' + err.message;
       setTimeout(() => resetScan(), 3000);
     }
   }
 
-  function showError(title, detail) {
-    const card = document.getElementById('resultCard');
-    card.className = 'result-card error';
-    document.getElementById('rName').textContent = title;
-    document.getElementById('rVisits').textContent = '—';
-    document.getElementById('rVisitsLabel').textContent = '';
-    const msgEl = document.getElementById('rMsg');
-    msgEl.style.whiteSpace = 'pre-wrap';
-    msgEl.style.fontSize = '11px';
-    msgEl.textContent = detail || '';
-    document.getElementById('result').classList.add('show');
-    document.getElementById('nextBtn').style.display = 'block';
-    document.getElementById('hint').textContent = '';
-  }
-
-  function resetScan() {
-    startCamera();
-  }
+  function resetScan() { startCamera(); }
 </script>
 </body>
 </html>
