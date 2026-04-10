@@ -30,7 +30,9 @@ module.exports = async function handler(req, res) {
   try {
     const { token, baseUrl: passkitBaseUrl } = getPassKitAuth();
     const programId = process.env.PASSKIT_PROGRAM_ID;
-    const tierId = process.env.PASSKIT_TIER_ID || TIER_BASE;
+    // 新規メンバーは常にBaseティア（白）から始まる。
+    // env変数 PASSKIT_TIER_ID は他用途で使われている可能性があるため上書きしない。
+    const tierId = TIER_BASE;
 
     const apiUrl = `${passkitBaseUrl}/members/member`;
     const controller = new AbortController();
