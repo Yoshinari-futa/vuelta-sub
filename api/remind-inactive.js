@@ -140,18 +140,29 @@ module.exports = async function handler(req, res) {
       //
       // PassKit テンプレート (5XDN0eRvqsF8tcxERa438o) の裏面に
       // フィールド "Message from VUELTA" (key: meta.reminderMessage, changeMessage: "VUELTA: %@")
-      // を追加済み。metaData.reminderMessage を更新するだけで
+      // を追加済み。metaData.reminderMessage を更新すると
       //   ① フィールド値が新しい文言に差し替わる
-      //   ② Apple Wallet がロック画面に "VUELTA: <message>" を表示
-      // が自動で成立する。passOverrides / secondaryPoints 等の小細工は不要。
+      //   ② Apple Wallet が "値が変わった" と検出して changeMessage を発火
+      //   ③ ロック画面に "VUELTA: <message>" を表示
+      //
+      // ※ changeMessage は前回値との「差分」が条件。同じ文字列を再送信すると
+      //   差分とみなされず通知が出ない。タイムスタンプを末尾に付けて
+      //   毎回必ずユニーク化する。
       const now = new Date();
+      const stamp = now.toLocaleTimeString('ja-JP', {
+        hour: '2-digit',
+        minute: '2-digit',
+        timeZone: 'Asia/Tokyo',
+      });
+      const messageWithStamp = `${REMIND_MESSAGE_EN} (${stamp})`;
+
       const updateBody = {
         id: m.id,
         programId: m.programId || programId,
         metaData: {
           ...meta,
           reminderSent: now.toISOString(),
-          reminderMessage: REMIND_MESSAGE_EN,
+          reminderMessage: messageWithStamp,
         },
       };
 
