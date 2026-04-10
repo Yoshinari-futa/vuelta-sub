@@ -27,8 +27,14 @@ module.exports = async function handler(req, res) {
 
   try {
     // Auth
+    // Vercel Cron から叩かれた場合は `x-vercel-cron: 1` ヘッダが付くので
+    // シークレット無しでも実行を許可する。
+    const isVercelCron =
+      req.headers &&
+      (req.headers['x-vercel-cron'] === '1' || req.headers['X-Vercel-Cron'] === '1');
+
     const geoSecret = (process.env.GEOFENCE_SECRET || '').trim();
-    if (geoSecret) {
+    if (geoSecret && !isVercelCron) {
       const provided = (req.query || {}).secret || (req.body && req.body.secret) || '';
       if (provided !== geoSecret) {
         return res.status(401).json({ error: 'Invalid or missing secret' });
@@ -103,6 +109,12 @@ module.exports = async function handler(req, res) {
 
     for (const m of members) {
       if (!m.id) continue;
+
+      // memberId 指定時はそれ以外を完全スキップ
+      if (targetMemberId && m.id !== targetMemberId) {
+        continue;
+      }
+
       const meta = m.metaData || {};
       const lastVisit = meta.lastVisit;
 
@@ -132,23 +144,28 @@ module.exports = async function handler(req, res) {
       }
 
       if (!lastActiveDate) {
-        noLastVisit++;
-        steps.push({
-          step: 'no_date_found',
-          memberId: m.id,
-          keys: Object.keys(m || {}),
-        });
-        continue;
+        if (forceSend || targetMemberId) {
+          // テスト時は日付がなくても続行
+          lastActiveDate = new Date(0);
+        } else {
+          noLastVisit++;
+          steps.push({
+            step: 'no_date_found',
+            memberId: m.id,
+            keys: Object.keys(m || {}),
+          });
+          continue;
+        }
       }
 
-      // まだアクティブ
-      if (lastActiveDate > cutoffDate) {
+      // まだアクティブ（force/targetMemberId 指定時はスキップしない）
+      if (!forceSend && !targetMemberId && lastActiveDate > cutoffDate) {
         skipped++;
         continue;
       }
 
-      // 既にリマインド済み（同じ期間内に2回送らない）
-      if (meta.reminderSent) {
+      // 既にリマインド済み（force/targetMemberId 指定時はスキップしない）
+      if (!forceSend && !targetMemberId && meta.reminderSent) {
         const reminderDate = new Date(meta.reminderSent);
         if (!isNaN(reminderDate.getTime()) && reminderDate > cutoffDate) {
           alreadyReminded++;
