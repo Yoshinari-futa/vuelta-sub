@@ -2,9 +2,15 @@
  * GET/POST /remind-inactive
  * 14日以上来店がないメンバーにリマインド通知を送る
  *
- * Apple Wallet はパスの内容が変更されるとプッシュ通知を自動送信する。
- * メンバーの metaData.backField を更新 → Wallet が通知 →
- * ロック画面に「パスが更新されました」と表示される。
+ * 仕組み：
+ *   PassKit Designer 側で 全5ティア（Base/Gold/Silver/Black/Rainbow）の
+ *   Information フィールド（フィールドキー: `universal.info`）に
+ *   Apple Wallet の Change Message を `VUELTA: %@` でセット済み。
+ *
+ *   このエンドポイントは該当メンバーの metaData["universal.info"] を
+ *   前回と違う文字列に書き換える。
+ *   → PassKit が Apple APNs 経由で自動プッシュ
+ *   → ロック画面に「VUELTA: We miss you! ...」が表示される。
  *
  * ?secret= で GEOFENCE_SECRET と照合（任意）
  * ?days=14 で日数を変更可能（デフォルト14日）
@@ -138,11 +144,12 @@ module.exports = async function handler(req, res) {
 
       // パス更新 → Apple Wallet がプッシュ通知を自動送信
       //
-      // テンプレート側に後から追加した裏面フィールドは
-      // 既存メンバーのインストール済みパスに自動では配信されないため、
-      // passOverrides.backFields で「メンバーごとに」裏面フィールドを上書き注入する。
-      // これで既存パスにも "Message from VUELTA" が差し込まれ、
-      // changeMessage: "VUELTA: %@" が発火してロック画面通知が出る。
+      // テンプレート側（全5ティア）の Information フィールド
+      // （フィールドキー: universal.info）には、あらかじめ PassKit Designer で
+      // Apple Wallet の Change Message = "VUELTA: %@" をセット済み。
+      //
+      // ここでは metaData["universal.info"] を前回値と異なる文字列に
+      // 書き換えるだけでよい。
       //
       // ※ changeMessage は前回値との「差分」が条件。同じ文字列を再送信すると
       //   差分とみなされず通知が出ない。タイムスタンプを末尾に付けて
@@ -155,31 +162,16 @@ module.exports = async function handler(req, res) {
       });
       const messageWithStamp = `${REMIND_MESSAGE_EN} (${stamp})`;
 
-      // 既存の passOverrides を壊さないようにマージ
-      const existingOverrides = m.passOverrides || {};
-      const existingBackFields = Array.isArray(existingOverrides.backFields)
-        ? existingOverrides.backFields.filter(f => f && f.key !== 'reminderMessage')
-        : [];
-
       const updateBody = {
         id: m.id,
         programId: m.programId || programId,
         metaData: {
           ...meta,
+          // PassKit テンプレートで定義済みの Information フィールド。
+          // このキーの値を書き換えることで Change Message "VUELTA: %@" が発火する。
+          'universal.info': messageWithStamp,
           reminderSent: now.toISOString(),
           reminderMessage: messageWithStamp,
-        },
-        passOverrides: {
-          ...existingOverrides,
-          backFields: [
-            ...existingBackFields,
-            {
-              key: 'reminderMessage',
-              label: 'Message from VUELTA',
-              value: messageWithStamp,
-              changeMessage: 'VUELTA: %@',
-            },
-          ],
         },
       };
 
