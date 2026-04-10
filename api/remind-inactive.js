@@ -138,12 +138,11 @@ module.exports = async function handler(req, res) {
 
       // パス更新 → Apple Wallet がプッシュ通知を自動送信
       //
-      // PassKit テンプレート (5XDN0eRvqsF8tcxERa438o) の裏面に
-      // フィールド "Message from VUELTA" (key: meta.reminderMessage, changeMessage: "VUELTA: %@")
-      // を追加済み。metaData.reminderMessage を更新すると
-      //   ① フィールド値が新しい文言に差し替わる
-      //   ② Apple Wallet が "値が変わった" と検出して changeMessage を発火
-      //   ③ ロック画面に "VUELTA: <message>" を表示
+      // テンプレート側に後から追加した裏面フィールドは
+      // 既存メンバーのインストール済みパスに自動では配信されないため、
+      // passOverrides.backFields で「メンバーごとに」裏面フィールドを上書き注入する。
+      // これで既存パスにも "Message from VUELTA" が差し込まれ、
+      // changeMessage: "VUELTA: %@" が発火してロック画面通知が出る。
       //
       // ※ changeMessage は前回値との「差分」が条件。同じ文字列を再送信すると
       //   差分とみなされず通知が出ない。タイムスタンプを末尾に付けて
@@ -156,6 +155,12 @@ module.exports = async function handler(req, res) {
       });
       const messageWithStamp = `${REMIND_MESSAGE_EN} (${stamp})`;
 
+      // 既存の passOverrides を壊さないようにマージ
+      const existingOverrides = m.passOverrides || {};
+      const existingBackFields = Array.isArray(existingOverrides.backFields)
+        ? existingOverrides.backFields.filter(f => f && f.key !== 'reminderMessage')
+        : [];
+
       const updateBody = {
         id: m.id,
         programId: m.programId || programId,
@@ -163,6 +168,18 @@ module.exports = async function handler(req, res) {
           ...meta,
           reminderSent: now.toISOString(),
           reminderMessage: messageWithStamp,
+        },
+        passOverrides: {
+          ...existingOverrides,
+          backFields: [
+            ...existingBackFields,
+            {
+              key: 'reminderMessage',
+              label: 'Message from VUELTA',
+              value: messageWithStamp,
+              changeMessage: 'VUELTA: %@',
+            },
+          ],
         },
       };
 
