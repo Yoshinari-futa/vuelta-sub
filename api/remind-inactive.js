@@ -137,29 +137,21 @@ module.exports = async function handler(req, res) {
       }
 
       // パス更新 → Apple Wallet がプッシュ通知を自動送信
-      // secondaryPoints を変更して表示フィールドを更新 + relevantDate で通知トリガー
+      //
+      // PassKit テンプレート (5XDN0eRvqsF8tcxERa438o) の裏面に
+      // フィールド "Message from VUELTA" (key: meta.reminderMessage, changeMessage: "VUELTA: %@")
+      // を追加済み。metaData.reminderMessage を更新するだけで
+      //   ① フィールド値が新しい文言に差し替わる
+      //   ② Apple Wallet がロック画面に "VUELTA: <message>" を表示
+      // が自動で成立する。passOverrides / secondaryPoints 等の小細工は不要。
       const now = new Date();
       const updateBody = {
         id: m.id,
         programId: m.programId || programId,
-        // secondaryPoints を現在epoch秒で更新（表示フィールドの値変更）
-        secondaryPoints: Math.floor(now.getTime() / 1000),
         metaData: {
           ...meta,
           reminderSent: now.toISOString(),
           reminderMessage: REMIND_MESSAGE_EN,
-        },
-        passOverrides: {
-          // relevantDate: 現在時刻 → Apple Wallet が「今関連がある」と判断し通知
-          relevantDate: now.toISOString(),
-          backFields: [
-            {
-              key: 'reminder',
-              label: 'Message from VUELTA',
-              value: REMIND_MESSAGE_EN,
-              changeMessage: 'VUELTA: %@',
-            },
-          ],
         },
       };
 
