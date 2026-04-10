@@ -45,6 +45,11 @@ module.exports = async function handler(req, res) {
     const dryRun = req.query?.dry === 'true';
     const cutoffDate = new Date(Date.now() - inactiveDays * 24 * 60 * 60 * 1000);
 
+    // テスト用：特定メンバーだけを対象にしたい場合
+    //   ?memberId=xxx または ?force=true で他のフィルタを全スキップして強制的に通知
+    const targetMemberId = req.query?.memberId || (req.body && req.body.memberId) || null;
+    const forceSend = req.query?.force === 'true';
+
     let token, baseUrl;
     try {
       const auth = getPassKitAuth();
@@ -101,17 +106,38 @@ module.exports = async function handler(req, res) {
       const meta = m.metaData || {};
       const lastVisit = meta.lastVisit;
 
-      // lastVisit が未設定 → 初回 set-geofence 以前のメンバー
-      // updated フィールドをフォールバックに使う
+      // 有効な日付が取れるまでフォールバックを順に試す。
+      // PassKit の member オブジェクトはエンドポイントやバージョンによって
+      // フィールド名が異なる（updated / updatedAt / lastUpdated / created 等）ので、
+      // よくある候補をまとめて総当たりする。
+      const dateCandidates = [
+        lastVisit,
+        m.updated,
+        m.updatedAt,
+        m.lastUpdated,
+        m.created,
+        m.createdAt,
+        m.creationDate,
+        m.meta && m.meta.created,
+        m.meta && m.meta.updated,
+      ];
       let lastActiveDate = null;
-      if (lastVisit) {
-        lastActiveDate = new Date(lastVisit);
-      } else if (m.updated) {
-        lastActiveDate = new Date(m.updated);
+      for (const c of dateCandidates) {
+        if (!c) continue;
+        const d = new Date(c);
+        if (!isNaN(d.getTime())) {
+          lastActiveDate = d;
+          break;
+        }
       }
 
-      if (!lastActiveDate || isNaN(lastActiveDate.getTime())) {
+      if (!lastActiveDate) {
         noLastVisit++;
+        steps.push({
+          step: 'no_date_found',
+          memberId: m.id,
+          keys: Object.keys(m || {}),
+        });
         continue;
       }
 
