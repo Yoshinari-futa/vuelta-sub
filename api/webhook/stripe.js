@@ -477,7 +477,9 @@ async function handler(req, res) {
           email: customerEmail,
           name: customerName,
           customerId: session.customer || session.id,
-          tierId: process.env.PASSKIT_TIER_ID || TIER_BASE,
+          // 新規メンバーは常に Base ティア（白）から開始。
+          // 環境変数 PASSKIT_TIER_ID は無視（過去の遺物で `black` になっている可能性あり）。
+          tierId: TIER_BASE,
         });
         console.log(`[PASSKIT] SUCCESS: ${walletUrl}`);
       } catch (err) {

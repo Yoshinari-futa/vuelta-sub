@@ -14,7 +14,9 @@ const { getPassKitAuth } = require('../lib/passkit-auth');
 const { TIER_BASE } = require('../lib/passkit-tier-ids');
 
 function getSingleTierId() {
-  return (process.env.PASSKIT_TIER_ID || TIER_BASE).trim();
+  // 修復対象のティアは常に Base（白）に戻す。
+  // 環境変数 PASSKIT_TIER_ID は無視（過去の遺物で `black` になっている可能性あり）。
+  return TIER_BASE;
 }
 
 module.exports = async function handler(req, res) {
