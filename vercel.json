@@ -4,6 +4,18 @@
     {
       "path": "/api/remind-inactive",
       "schedule": "0 8 * * *"
+    },
+    {
+      "path": "/api/daily-sales",
+      "schedule": "0 22 * * *"
+    },
+    {
+      "path": "/api/weekly-sales",
+      "schedule": "0 22 * * 0"
+    },
+    {
+      "path": "/api/monthly-sales",
+      "schedule": "0 22 1 * *"
     }
   ],
   "builds": [
@@ -66,24 +78,24 @@
       "dest": "/api/cleanup-member.js"
     },
     {
-      "src": "/setup-strip-image",
-      "dest": "/api/setup-strip-image.js"
-    },
-    {
       "src": "/list-members",
       "dest": "/api/list-members.js"
     },
     {
-      "src": "/fix-barcode",
-      "dest": "/api/fix-barcode.js"
-    },
-    {
-      "src": "/repair-member-visits",
-      "dest": "/api/repair-member-visits.js"
-    },
-    {
       "src": "/remind-inactive",
       "dest": "/api/remind-inactive.js"
+    },
+    {
+      "src": "/daily-sales",
+      "dest": "/api/daily-sales.js"
+    },
+    {
+      "src": "/weekly-sales",
+      "dest": "/api/weekly-sales.js"
+    },
+    {
+      "src": "/monthly-sales",
+      "dest": "/api/monthly-sales.js"
     }
   ]
 }

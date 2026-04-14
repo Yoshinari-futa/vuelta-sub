@@ -1,0 +1,33 @@
+name: Customer Record (Slack → Notion)
+
+on:
+  schedule:
+    # 毎日 17:00 UTC = 翌朝 2:00 JST
+    - cron: '0 17 * * *'
+  workflow_dispatch:  # 手動実行ボタン
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install -r scripts/customer-record/requirements.txt
+
+      - name: Run customer record
+        env:
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+          SLACK_CHANNEL_ID: ${{ secrets.SLACK_CHANNEL_ID }}
+          NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
+          NOTION_VISIT_DB_ID: ${{ secrets.NOTION_VISIT_DB_ID }}
+          NOTION_CUSTOMER_DB_ID: ${{ secrets.NOTION_CUSTOMER_DB_ID }}
+        run: python scripts/customer-record/customer_record.py

@@ -288,6 +288,7 @@ module.exports = async function handler(req, res) {
             longitude: 132.4541823,
             relevantText: "You're near VUELTA. How about a drink tonight?",
             altitude: 0,
+            radius: 300,
           },
         ],
       },

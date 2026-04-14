@@ -234,6 +234,62 @@ async function generatePassKitCard({ email, name, customerId, tierId }) {
   }
 }
 
+// ウォレットURL到着メール（PassKit生成後に送る2通目）
+async function sendWalletReadyEmail(transporter, email, name, walletUrl) {
+  await transporter.sendMail({
+    from: process.env.EMAIL_FROM || 'noreply@vuelta.jp',
+    to: email,
+    subject: 'VUELTA — Walletカードの準備ができました',
+    html: `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+</head>
+<body style="margin:0;padding:0;background:#f4f4f4;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','Helvetica Neue',sans-serif;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f4f4f4;">
+    <tr><td align="center" style="padding:48px 20px;">
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:440px;background:#ffffff;border-radius:16px;">
+        <tr><td style="padding:40px 32px 36px;">
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+            <tr><td align="center" style="padding-bottom:36px;">
+              <img src="https://vuelta.jp/images/vuelta-logo.png" alt="VUELTA" height="28" style="height:28px;width:auto;">
+            </td></tr>
+            <tr><td align="center" style="padding-bottom:24px;">
+              <div style="width:36px;height:3px;background:#2d5a3d;border-radius:2px;"></div>
+            </td></tr>
+            <tr><td align="center" style="padding-bottom:10px;">
+              <span style="font-size:20px;font-weight:500;color:#0a0a0a;">${name} 様</span>
+            </td></tr>
+            <tr><td align="center" style="padding-bottom:28px;">
+              <span style="font-size:13px;color:#888;line-height:1.8;">Walletカードの準備ができました。<br>下のボタンからスマホに保存してください。</span>
+            </td></tr>
+            <tr><td style="padding-bottom:24px;"><div style="height:1px;background:#eee;"></div></td></tr>
+            <tr><td align="center" style="padding:28px 0 12px;">
+              <a href="${walletUrl}" style="display:inline-block;padding:13px 36px;background:#0a0a0a;color:#ffffff;text-decoration:none;font-weight:600;font-size:13px;letter-spacing:0.06em;border-radius:50px;mso-padding-alt:0;">ADD TO WALLET &rarr;</a>
+            </td></tr>
+            <tr><td align="center" style="padding:0 0 24px;">
+              <span style="font-size:11px;color:#bbb;">タップしてスマホのWalletに保存</span>
+            </td></tr>
+            <tr><td align="center" style="padding-top:20px;">
+              <p style="margin:0 0 4px;font-size:11px;color:#bbb;font-style:italic;">Where welcome back meets nice to meet you.</p>
+              <p style="margin:0 0 8px;font-size:11px;color:#ccc;">広島市中区大手町3-3-5 掛江ビル2F</p>
+              <p style="margin:0;">
+                <a href="https://www.instagram.com/vuelta_bar" style="color:#999;text-decoration:none;font-size:11px;">Instagram</a>
+                <span style="color:#ddd;margin:0 6px;">&middot;</span>
+                <a href="https://www.vuelta.jp/" style="color:#999;text-decoration:none;font-size:11px;">Website</a>
+              </p>
+            </td></tr>
+          </table>
+        </td></tr>
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>`,
+  });
+}
+
 // ウェルカムメール送信（walletUrl有無で内容を分岐）
 async function sendMembershipEmail(transporter, email, name, walletUrl) {
   const walletButton = walletUrl
@@ -450,6 +506,9 @@ async function handler(req, res) {
 
   console.log(`[WEBHOOK] Event received: ${event.type} (${event.id})`);
 
+  // ===== Stripeに即座に200を返す（タイムアウト・リトライ防止）=====
+  res.json({ received: true });
+
   // ===== 新規決済完了 =====
   if (event.type === 'checkout.session.completed') {
     const session = await enrichCheckoutSessionWithCustomFields(event.data.object);
@@ -467,24 +526,37 @@ async function handler(req, res) {
 
       if (!customerEmail) {
         console.error('[WEBHOOK] ERROR: No email found in session data');
-        return res.status(200).json({ received: true, warning: 'No email found' });
+        return;
       }
 
-      // PassKit会員証生成（失敗しても続行 — ただしSlack警告を送る）
+      const transporter = getTransporter();
+
+      // ステップ1: ウェルカムメールをまず送る（walletUrlなし → 「準備中」メッセージ）
+      // これにより、PassKitの成否にかかわらず決済確認メールが必ず届く
+      if (transporter) {
+        try {
+          await sendMembershipEmail(transporter, customerEmail, customerName, null);
+          console.log(`[EMAIL] Welcome email sent to ${customerEmail}`);
+        } catch (err) {
+          console.error(`[EMAIL] Welcome email FAILED: ${err.message}`);
+        }
+      } else {
+        console.error('[EMAIL] FAILED: No transporter (missing EMAIL_USER or EMAIL_PASS)');
+      }
+
+      // ステップ2: PassKit会員証生成（失敗しても続行）
       let walletUrl = null;
       try {
         walletUrl = await generatePassKitCard({
           email: customerEmail,
           name: customerName,
           customerId: session.customer || session.id,
-          // 新規メンバーは常に Base ティア（白）から開始。
-          // 環境変数 PASSKIT_TIER_ID は無視（過去の遺物で `black` になっている可能性あり）。
           tierId: TIER_BASE,
         });
         console.log(`[PASSKIT] SUCCESS: ${walletUrl}`);
       } catch (err) {
         console.error(`[PASSKIT] FAILED: ${err.message}`);
-        // PassKit作成失敗をSlackに警告
+        // PassKit失敗をSlackに警告
         const webhookUrl = process.env.SLACK_WEBHOOK_URL;
         if (webhookUrl) {
           try {
@@ -522,18 +594,14 @@ async function handler(req, res) {
         }
       }
 
-      // メール送信
-      console.log(`[EMAIL] Sending to ${customerEmail}...`);
-      const transporter = getTransporter();
-      if (transporter) {
+      // ステップ3: PassKit成功時はウォレットURL専用メールを追送
+      if (walletUrl && transporter) {
         try {
-          await sendMembershipEmail(transporter, customerEmail, customerName, walletUrl);
-          console.log(`[EMAIL] SUCCESS: sent to ${customerEmail}`);
+          await sendWalletReadyEmail(transporter, customerEmail, customerName, walletUrl);
+          console.log(`[EMAIL] Wallet URL email sent to ${customerEmail}`);
         } catch (err) {
-          console.error(`[EMAIL] FAILED: ${err.message}`);
+          console.error(`[EMAIL] Wallet URL email FAILED: ${err.message}`);
         }
-      } else {
-        console.error('[EMAIL] FAILED: No transporter (missing EMAIL_USER or EMAIL_PASS)');
       }
 
       // Slack通知
@@ -556,7 +624,6 @@ async function handler(req, res) {
     console.log(`[WEBHOOK] Subscription cancelled: customer=${customerId}`);
 
     try {
-      // Slack通知（削除は手動で /cleanup-member から行う）
       const webhookUrl = process.env.SLACK_WEBHOOK_URL;
       if (webhookUrl) {
         await fetch(webhookUrl, {
@@ -577,8 +644,6 @@ async function handler(req, res) {
       console.error(`[WEBHOOK] Cancellation processing error: ${err.message}`);
     }
   }
-
-  res.json({ received: true });
 }
 
 // Vercelではbodyのパースを無効にする（Stripe署名検証のため）
