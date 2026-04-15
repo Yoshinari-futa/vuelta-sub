@@ -2,23 +2,23 @@
   "version": 2,
   "crons": [
     {
-      "path": "/api/remind-inactive",
+      "path": "/remind-inactive",
       "schedule": "0 8 * * *"
     },
     {
-      "path": "/api/daily-sales",
+      "path": "/daily-sales",
       "schedule": "0 22 * * *"
     },
     {
-      "path": "/api/weekly-sales",
+      "path": "/weekly-sales",
       "schedule": "0 22 * * 0"
     },
     {
-      "path": "/api/monthly-sales",
+      "path": "/monthly-sales",
       "schedule": "0 22 1 * *"
     },
     {
-      "path": "/api/customer-receipt-oku",
+      "path": "/customer-receipt-oku",
       "schedule": "0 22 * * *"
     }
   ],
