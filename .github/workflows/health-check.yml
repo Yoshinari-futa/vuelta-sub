@@ -1,0 +1,37 @@
+name: Webhook Health Check
+
+# 30分毎に本番 webhook を叩き、5xx なら即 Slack へアラート
+# 2026-04-15 の MODULE_NOT_FOUND サイレント障害の再発防止
+
+on:
+  schedule:
+    - cron: '*/30 * * * *'
+  workflow_dispatch:
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: ping /webhook/stripe
+        run: |
+          STATUS=$(curl -s -o /tmp/body -w "%{http_code}" -X POST https://subsc-webhook.vercel.app/webhook/stripe \
+            -H "Content-Type: application/json" -d '{}')
+          echo "HTTP $STATUS"
+          cat /tmp/body
+          if [ "$STATUS" -ge 500 ]; then
+            echo "::error::webhook returned $STATUS"
+            curl -s -X POST "${{ secrets.SLACK_WEBHOOK_URL }}" \
+              -H 'Content-Type: application/json' \
+              -d "{\"text\":\":rotating_light: *subsc-webhook 障害* /webhook/stripe が ${STATUS}\\n直近の決済でメールが届いていない可能性があります。即対応してください。\\nhttps://vercel.com/yoshinaris-projects-a460fad6/subsc-webhook\"}" || true
+            exit 1
+          fi
+
+      - name: ping /health
+        run: |
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" https://subsc-webhook.vercel.app/health)
+          if [ "$STATUS" -ge 500 ]; then
+            curl -s -X POST "${{ secrets.SLACK_WEBHOOK_URL }}" \
+              -H 'Content-Type: application/json' \
+              -d "{\"text\":\":rotating_light: subsc-webhook /health が ${STATUS}\"}" || true
+            exit 1
+          fi

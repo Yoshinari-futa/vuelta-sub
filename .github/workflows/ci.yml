@@ -1,0 +1,45 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  require-check:
+    name: 全 api/*.js の require 解決チェック
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: install
+        run: npm ci --omit=dev || npm install --omit=dev
+      - name: check requires
+        run: node scripts/check-requires.js
+
+  post-deploy-smoke:
+    name: 本番 webhook smoke test
+    needs: require-check
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Vercel デプロイ反映待ち
+        run: sleep 90
+      - name: webhook が 5xx を返さないことを確認
+        run: |
+          # 署名なしリクエスト → 期待値: 400 (Bad Request, ランタイムは到達)
+          # MODULE_NOT_FOUND の場合は 500 が返るので fail
+          STATUS=$(curl -s -o /tmp/body -w "%{http_code}" -X POST https://subsc-webhook.vercel.app/webhook/stripe \
+            -H "Content-Type: application/json" -d '{}')
+          echo "HTTP $STATUS"
+          cat /tmp/body
+          if [ "$STATUS" -ge 500 ]; then
+            echo "::error::webhook が 5xx を返しました（MODULE_NOT_FOUND の疑い）"
+            curl -s -X POST "${{ secrets.SLACK_WEBHOOK_URL }}" \
+              -H 'Content-Type: application/json' \
+              -d "{\"text\":\":rotating_light: subsc-webhook /webhook/stripe が ${STATUS} を返しています。直ちに確認してください。\"}" || true
+            exit 1
+          fi
