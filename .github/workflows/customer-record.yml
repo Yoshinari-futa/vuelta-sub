@@ -23,32 +23,6 @@ jobs:
       - name: Install dependencies
         run: pip install -r scripts/customer-record/requirements.txt
 
-      - name: Debug Slack API
-        env:
-          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
-          SLACK_CHANNEL_ID: ${{ secrets.SLACK_CHANNEL_ID }}
-        run: |
-          python3 -c "
-          import os, requests, time
-          token = os.environ['SLACK_BOT_TOKEN']
-          channel = os.environ['SLACK_CHANNEL_ID']
-          oldest = str(time.time() - 48 * 3600)
-          print(f'channel={channel}')
-          print(f'oldest={oldest}')
-          print(f'token_prefix={token[:20]}...')
-          r = requests.get(
-            'https://slack.com/api/conversations.history',
-            headers={'Authorization': f'Bearer {token}'},
-            params={'channel': channel, 'oldest': oldest, 'limit': 10}
-          )
-          d = r.json()
-          print(f'ok={d.get(\"ok\")}')
-          print(f'error={d.get(\"error\")}')
-          print(f'messages={len(d.get(\"messages\",[]))}')
-          for m in d.get('messages', [])[:3]:
-              print(f'  ts={m.get(\"ts\")} text={m.get(\"text\",\"\")[:40]}')
-          "
-
       - name: Run customer record
         env:
           SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
