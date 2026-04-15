@@ -7,8 +7,8 @@
 
 const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
 const nodemailer = require('nodemailer');
-const { getPassKitAuth } = require('../passkit-auth');
-const { TIER_BASE } = require('../passkit-tier-ids');
+const { getPassKitAuth } = require('../../lib/passkit-auth');
+const { TIER_BASE } = require('../../lib/passkit-tier-ids');
 
 // config は handler に付与（下部参照）
 
@@ -390,6 +390,21 @@ async function sendMembershipEmail(transporter, email, name, walletUrl) {
                 </td></tr>
               </table>
             </td></tr>
+            <!-- 解約・管理のご案内 -->
+            <tr><td style="padding:24px 0 8px;">
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f8f8f8;border-radius:10px;">
+                <tr><td style="padding:18px 22px;">
+                  <p style="margin:0 0 8px;font-size:12px;font-weight:600;color:#1a1a1a;">サブスクリプションの解約・管理について</p>
+                  <p style="margin:0 0 10px;font-size:12px;color:#666;line-height:1.7;">
+                    解約・お支払い方法の変更は、下記ページからご登録メールアドレスを入力するといつでもセルフでお手続きいただけます。<br>
+                    解約日までは引き続きサービスをご利用いただけ、次回更新日以降の請求は発生しません。
+                  </p>
+                  <p style="margin:0;">
+                    <a href="https://subsc-webhook.vercel.app/cancel" style="color:#0a0a0a;text-decoration:underline;font-size:12px;font-weight:600;">解約・管理ページへ &rarr;</a>
+                  </p>
+                </td></tr>
+              </table>
+            </td></tr>
             <!-- Footer -->
             <tr><td align="center" style="padding-top:20px;">
               <p style="margin:0 0 4px;font-size:11px;color:#bbb;font-style:italic;">Where welcome back meets nice to meet you.</p>
@@ -398,9 +413,6 @@ async function sendMembershipEmail(transporter, email, name, walletUrl) {
                 <a href="https://www.instagram.com/vuelta_bar" style="color:#999;text-decoration:none;font-size:11px;">Instagram</a>
                 <span style="color:#ddd;margin:0 6px;">&middot;</span>
                 <a href="https://www.vuelta.jp/" style="color:#999;text-decoration:none;font-size:11px;">Website</a>
-              </p>
-              <p style="margin:12px 0 0;">
-                <a href="https://subsc-webhook.vercel.app/cancel" style="color:#ccc;text-decoration:none;font-size:10px;">サブスクリプションの管理・解約</a>
               </p>
             </td></tr>
           </table>
