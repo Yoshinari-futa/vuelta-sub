@@ -1,7 +1,8 @@
 name: Webhook Health Check
 
-# 30分毎に本番 webhook を叩き、5xx なら即 Slack へアラート
-# 2026-04-15 の MODULE_NOT_FOUND サイレント障害の再発防止
+# 30分毎に本番エンドポイントを叩き、5xx なら即 Slack へアラート
+# 2026-04-15: MODULE_NOT_FOUND サイレント障害の再発防止
+# 2026-04-16: Vercel Cron が全404で無音失敗していた再発防止 → cronエンドポイントも監視追加
 
 on:
   schedule:
@@ -33,5 +34,25 @@ jobs:
             curl -s -X POST "${{ secrets.SLACK_WEBHOOK_URL }}" \
               -H 'Content-Type: application/json' \
               -d "{\"text\":\":rotating_light: subsc-webhook /health が ${STATUS}\"}" || true
+            exit 1
+          fi
+
+      - name: ping cron endpoints (404/5xx で即アラート)
+        run: |
+          FAILED=""
+          for PATH in daily-sales weekly-sales monthly-sales remind-inactive customer-receipt-oku; do
+            STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+              "https://subsc-webhook.vercel.app/${PATH}" \
+              -H "x-vercel-cron: 1")
+            echo "/${PATH} → HTTP ${STATUS}"
+            if [ "$STATUS" = "404" ] || [ "$STATUS" -ge 500 ]; then
+              FAILED="${FAILED} /${PATH}(${STATUS})"
+            fi
+          done
+          if [ -n "$FAILED" ]; then
+            echo "::error::cronエンドポイントが応答しません:${FAILED}"
+            curl -s -X POST "${{ secrets.SLACK_WEBHOOK_URL }}" \
+              -H 'Content-Type: application/json' \
+              -d "{\"text\":\":rotating_light: *Vercel Cron 到達不能*\\n${FAILED}\\nCronが動いていない可能性があります。vercel.json のパスを確認してください。\\nhttps://vercel.com/yoshinaris-projects-a460fad6/subsc-webhook\"}" || true
             exit 1
           fi
