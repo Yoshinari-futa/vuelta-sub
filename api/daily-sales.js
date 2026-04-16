@@ -485,7 +485,7 @@ module.exports = async function handler(req, res) {
   } catch (err) {
     console.error('[DAILY-SALES] ERROR:', err.message);
     try {
-      await postSlack({ text: `:warning: *日次売上レポート エラー*\n\`\`\`${err.message}\`\`\`` });
+      await postSlack({ channel: 'D09TV05303C', text: `:warning: *日次売上レポート エラー*\n\`\`\`${err.message}\`\`\`` });
     } catch (_) {}
     return res.status(500).json({ error: err.message });
   }

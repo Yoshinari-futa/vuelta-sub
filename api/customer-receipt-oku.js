@@ -11,7 +11,7 @@
 
 const JST_OFFSET = 9 * 60 * 60 * 1000;
 const BOUNDARY_HOUR = 5; // 営業日の切れ目（05:00 JST）
-const SLACK_CHANNEL = 'C0APKUWTR2L'; // #04_receipt_奥_vuelta店内飲食
+const SLACK_CHANNEL = 'C0APKUWTR2L'; // #04-receipts（旧: #04_receipt_奥_vuelta店内飲食）
 
 // 奥大地さんの Square 顧客ID（重複アカウントを含めて全部対象）
 const OKU_CUSTOMER_IDS = [
@@ -204,7 +204,7 @@ module.exports = async function handler(req, res) {
   } catch (err) {
     console.error('[OKU-RECEIPT] ERROR:', err.message);
     try {
-      await postSlack({ text: `:warning: *奥大地さん前日レシート取得エラー*\n\`\`\`${err.message}\`\`\`` });
+      await postSlack({ channel: 'D09TV05303C', text: `:warning: *奥大地さん前日レシート取得エラー*\n\`\`\`${err.message}\`\`\`` });
     } catch (_) {}
     return res.status(500).json({ error: err.message });
   }
