@@ -3,6 +3,7 @@ name: Webhook Health Check
 # 30分毎に本番エンドポイントを叩き、5xx なら即 Slack へアラート
 # 2026-04-15: MODULE_NOT_FOUND サイレント障害の再発防止
 # 2026-04-16: Vercel Cron が全404で無音失敗していた再発防止 → cronエンドポイントも監視追加
+# 2026-04-16: for PATH → for ENDPOINT に修正（PATH はシェル予約変数のため curl が消えるバグ）
 
 on:
   schedule:
@@ -40,13 +41,13 @@ jobs:
       - name: ping cron endpoints (404/5xx で即アラート)
         run: |
           FAILED=""
-          for PATH in daily-sales weekly-sales monthly-sales remind-inactive customer-receipt-oku; do
+          for ENDPOINT in daily-sales weekly-sales monthly-sales remind-inactive customer-receipt-oku; do
             STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
-              "https://subsc-webhook.vercel.app/${PATH}" \
+              "https://subsc-webhook.vercel.app/${ENDPOINT}" \
               -H "x-vercel-cron: 1")
-            echo "/${PATH} → HTTP ${STATUS}"
+            echo "/${ENDPOINT} → HTTP ${STATUS}"
             if [ "$STATUS" = "404" ] || [ "$STATUS" -ge 500 ]; then
-              FAILED="${FAILED} /${PATH}(${STATUS})"
+              FAILED="${FAILED} /${ENDPOINT}(${STATUS})"
             fi
           done
           if [ -n "$FAILED" ]; then
