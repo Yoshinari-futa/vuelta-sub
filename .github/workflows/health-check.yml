@@ -38,22 +38,7 @@ jobs:
             exit 1
           fi
 
-      - name: ping cron endpoints (404/5xx で即アラート)
-        run: |
-          FAILED=""
-          for ENDPOINT in daily-sales weekly-sales monthly-sales remind-inactive customer-receipt-oku; do
-            STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
-              "https://subsc-webhook.vercel.app/${ENDPOINT}" \
-              -H "x-vercel-cron: 1")
-            echo "/${ENDPOINT} → HTTP ${STATUS}"
-            if [ "$STATUS" = "404" ] || [ "$STATUS" -ge 500 ]; then
-              FAILED="${FAILED} /${ENDPOINT}(${STATUS})"
-            fi
-          done
-          if [ -n "$FAILED" ]; then
-            echo "::error::cronエンドポイントが応答しません:${FAILED}"
-            curl -s -X POST "${{ secrets.SLACK_WEBHOOK_URL }}" \
-              -H 'Content-Type: application/json' \
-              -d "{\"text\":\":rotating_light: *Vercel Cron 到達不能*\\n${FAILED}\\nCronが動いていない可能性があります。vercel.json のパスを確認してください。\\nhttps://vercel.com/yoshinaris-projects-a460fad6/subsc-webhook\"}" || true
-            exit 1
-          fi
+      # NOTE: cronエンドポイント（/daily-sales 等）はここで叩かない。
+      # x-vercel-cron: 1 ヘッダーをつけてcurlすると実際にレポートが送信されるため、
+      # 30分ごとにSlackが大量投稿される問題が発生した（2026-04-16）。
+      # cronの疎通確認は Vercel ダッシュボードの Cron Jobs タブで行うこと。
