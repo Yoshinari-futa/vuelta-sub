@@ -2,78 +2,99 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8">
-<title>VUELTA 売上ダッシュボード｜ハウスミーティング 2026-04-19</title>
+<title>VUELTA 売上レポート｜ハウスミーティング 2026-04-19</title>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 <style>
   :root {
-    --bg: #0f1419;
-    --card: #1a2028;
-    --card2: #222a35;
-    --accent: #e8b959;
-    --accent2: #d96b5a;
-    --text: #e8eaed;
-    --sub: #9aa3ad;
-    --green: #6abf69;
-    --red: #e57373;
-    --border: #2d3746;
+    --bg: #ffffff;
+    --panel: #ffffff;
+    --panel-alt: #fafafa;
+    --border: #e5e7eb;
+    --text: #1f2937;
+    --sub: #6b7280;
+    --accent: #1f2937;
+    --pos: #059669;
+    --neg: #dc2626;
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body {
-    font-family: -apple-system, 'Hiragino Sans', 'Yu Gothic', sans-serif;
+    font-family: -apple-system, 'Hiragino Kaku Gothic ProN', 'Yu Gothic', sans-serif;
     background: var(--bg);
     color: var(--text);
-    padding: 24px;
-    line-height: 1.5;
+    padding: 32px 24px;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
   }
-  .wrap { max-width: 1280px; margin: 0 auto; }
-  header {
-    display: flex;
-    justify-content: space-between;
-    align-items: baseline;
-    padding-bottom: 20px;
-    border-bottom: 2px solid var(--accent);
-    margin-bottom: 24px;
-  }
-  header h1 { font-size: 24px; color: var(--accent); letter-spacing: 0.04em; }
-  header .sub { color: var(--sub); font-size: 13px; }
+  .wrap { max-width: 1100px; margin: 0 auto; }
 
-  .grid { display: grid; gap: 16px; }
+  header {
+    padding-bottom: 20px;
+    margin-bottom: 28px;
+    border-bottom: 1px solid var(--border);
+  }
+  header h1 {
+    font-size: 22px;
+    font-weight: 600;
+    color: var(--text);
+    letter-spacing: 0.02em;
+  }
+  header .sub {
+    color: var(--sub);
+    font-size: 13px;
+    margin-top: 4px;
+  }
+
+  .grid { display: grid; gap: 14px; }
   .g-4 { grid-template-columns: repeat(4, 1fr); }
-  .g-2 { grid-template-columns: repeat(2, 1fr); }
   .g-3 { grid-template-columns: repeat(3, 1fr); }
+  .g-2 { grid-template-columns: repeat(2, 1fr); }
 
   .card {
-    background: var(--card);
+    background: var(--panel);
     border: 1px solid var(--border);
-    border-radius: 10px;
+    border-radius: 8px;
     padding: 18px 20px;
   }
   .card h3 {
-    font-size: 12px;
+    font-size: 11px;
     color: var(--sub);
-    font-weight: 600;
-    letter-spacing: 0.08em;
-    margin-bottom: 10px;
+    font-weight: 500;
+    letter-spacing: 0.06em;
+    margin-bottom: 8px;
     text-transform: uppercase;
   }
-  .kpi { font-size: 28px; font-weight: 700; color: var(--accent); }
-  .kpi.sm { font-size: 22px; }
-  .kpi .unit { font-size: 13px; color: var(--sub); margin-left: 4px; }
-  .delta { font-size: 12px; margin-top: 4px; }
-  .delta.up { color: var(--green); }
-  .delta.dn { color: var(--red); }
+  .kpi {
+    font-size: 26px;
+    font-weight: 600;
+    color: var(--text);
+    letter-spacing: -0.01em;
+  }
+  .kpi.sm { font-size: 20px; }
+  .kpi .unit { font-size: 12px; color: var(--sub); margin-left: 4px; font-weight: 400; }
+  .delta {
+    font-size: 12px;
+    margin-top: 6px;
+    color: var(--sub);
+  }
+  .delta.up { color: var(--pos); }
+  .delta.dn { color: var(--neg); }
 
-  section { margin-top: 24px; }
+  section { margin-top: 28px; }
   section h2 {
-    font-size: 15px;
-    color: var(--accent);
-    letter-spacing: 0.06em;
-    border-left: 3px solid var(--accent);
-    padding-left: 10px;
+    font-size: 14px;
+    color: var(--text);
+    font-weight: 600;
+    letter-spacing: 0.04em;
     margin-bottom: 12px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--border);
   }
 
-  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+  }
   th, td {
     padding: 8px 12px;
     text-align: left;
@@ -81,38 +102,51 @@
   }
   th {
     color: var(--sub);
-    font-weight: 600;
+    font-weight: 500;
     font-size: 11px;
     text-transform: uppercase;
-    letter-spacing: 0.06em;
+    letter-spacing: 0.05em;
+    background: var(--panel-alt);
   }
   td.num { text-align: right; font-variant-numeric: tabular-nums; }
-  tbody tr:hover { background: var(--card2); }
-  .rank { color: var(--accent); font-weight: 700; width: 36px; }
+  tbody tr:last-child td { border-bottom: none; }
+  .rank { color: var(--sub); font-weight: 500; width: 28px; }
 
-  .chart-box { position: relative; height: 240px; }
-  .chart-box.tall { height: 320px; }
+  .chart-box { position: relative; height: 220px; margin-top: 6px; }
 
   .pill {
     display: inline-block;
     padding: 2px 8px;
-    border-radius: 999px;
+    border-radius: 4px;
     font-size: 11px;
-    background: var(--card2);
+    font-weight: 500;
+    background: var(--panel-alt);
     color: var(--sub);
+    border: 1px solid var(--border);
   }
-  .pill.mar { background: #3a2e1a; color: var(--accent); }
-  .pill.apr { background: #2a1a1a; color: var(--accent2); }
+
+  ul.memo {
+    padding-left: 18px;
+    line-height: 1.9;
+    font-size: 13.5px;
+  }
+  ul.memo li { margin-bottom: 4px; }
+  ul.memo b { color: var(--text); }
 
   footer {
-    margin-top: 40px;
-    padding-top: 16px;
+    margin-top: 36px;
+    padding-top: 14px;
     border-top: 1px solid var(--border);
     color: var(--sub);
     font-size: 11px;
     text-align: center;
   }
 
+  @media print {
+    body { padding: 12px; }
+    .card { break-inside: avoid; }
+    section { break-inside: avoid; }
+  }
   @media (max-width: 900px) {
     .g-4, .g-3 { grid-template-columns: repeat(2, 1fr); }
     .g-2 { grid-template-columns: 1fr; }
@@ -123,16 +157,12 @@
 <div class="wrap">
 
 <header>
-  <div>
-    <h1>VUELTA 売上ダッシュボード</h1>
-    <div class="sub">ハウスミーティング用資料 ／ 作成日: 2026年4月19日</div>
-  </div>
-  <div class="sub">データ取得元: Square Orders API｜営業日境界 5:00 JST</div>
+  <h1>VUELTA 売上レポート</h1>
+  <div class="sub">ハウスミーティング用資料｜2026年4月19日｜データ取得元: Square Orders API（営業日境界 5:00 JST）</div>
 </header>
 
-<!-- Top KPIs -->
 <section>
-  <h2>📊 サマリー（3月実績 vs 4月途中経過）</h2>
+  <h2>サマリー（3月実績 vs 4月1〜18日）</h2>
   <div class="grid g-4">
     <div class="card">
       <h3>3月 総売上</h3>
@@ -142,7 +172,7 @@
     <div class="card">
       <h3>4月 総売上（1〜18日）</h3>
       <div class="kpi">¥628,150</div>
-      <div class="delta up">▲ 3月実績を既に超過（+4.2%）</div>
+      <div class="delta up">3月実績を既に超過（+4.2%）</div>
     </div>
     <div class="card">
       <h3>3月 平均日商</h3>
@@ -152,14 +182,13 @@
     <div class="card">
       <h3>4月 平均日商</h3>
       <div class="kpi sm">¥41,877</div>
-      <div class="delta up">▲ +18.1%（客単価 ¥3,306 ／ 190人）</div>
+      <div class="delta up">+18.1%（客単価 ¥3,306 ／ 190人）</div>
     </div>
   </div>
 </section>
 
-<!-- Headcount & Spend -->
 <section>
-  <h2>👥 来店人数・客単価（Cover Charge個数ベース）</h2>
+  <h2>来店人数・客単価（Cover Charge個数ベース）</h2>
   <div class="grid g-3">
     <div class="card">
       <h3>来店人数</h3>
@@ -179,49 +208,46 @@
   </div>
 </section>
 
-<!-- Daily Sales Chart -->
 <section>
-  <h2>📅 日別売上推移</h2>
+  <h2>日別売上推移</h2>
   <div class="grid g-2">
     <div class="card">
-      <h3><span class="pill mar">3月</span> 日別売上</h3>
+      <h3><span class="pill">3月</span> 日別売上</h3>
       <div class="chart-box"><canvas id="marDaily"></canvas></div>
     </div>
     <div class="card">
-      <h3><span class="pill apr">4月1〜18日</span> 日別売上</h3>
+      <h3><span class="pill">4月1〜18日</span> 日別売上</h3>
       <div class="chart-box"><canvas id="aprDaily"></canvas></div>
     </div>
   </div>
 </section>
 
-<!-- Payment methods -->
 <section>
-  <h2>💳 決済方法別構成比</h2>
+  <h2>決済方法別構成比</h2>
   <div class="grid g-2">
     <div class="card">
-      <h3><span class="pill mar">3月</span> 決済方法</h3>
+      <h3><span class="pill">3月</span> 決済方法</h3>
       <div class="chart-box"><canvas id="marPay"></canvas></div>
     </div>
     <div class="card">
-      <h3><span class="pill apr">4月</span> 決済方法</h3>
+      <h3><span class="pill">4月</span> 決済方法</h3>
       <div class="chart-box"><canvas id="aprPay"></canvas></div>
     </div>
   </div>
 </section>
 
-<!-- Product TOP10 -->
 <section>
-  <h2>🏆 商品売上ランキング TOP10</h2>
+  <h2>商品売上ランキング TOP10</h2>
   <div class="grid g-2">
     <div class="card">
-      <h3><span class="pill mar">3月</span> 商品TOP10</h3>
+      <h3><span class="pill">3月</span> 商品TOP10</h3>
       <table>
         <thead><tr><th>#</th><th>商品</th><th class="num">数量</th><th class="num">売上</th></tr></thead>
         <tbody id="marItems"></tbody>
       </table>
     </div>
     <div class="card">
-      <h3><span class="pill apr">4月1〜18日</span> 商品TOP10</h3>
+      <h3><span class="pill">4月1〜18日</span> 商品TOP10</h3>
       <table>
         <thead><tr><th>#</th><th>商品</th><th class="num">数量</th><th class="num">売上</th></tr></thead>
         <tbody id="aprItems"></tbody>
@@ -230,9 +256,8 @@
   </div>
 </section>
 
-<!-- Highlights -->
 <section>
-  <h2>🔝 最高・最低売上日</h2>
+  <h2>最高・最低売上日</h2>
   <div class="grid g-4">
     <div class="card">
       <h3>3月 最高売上日</h3>
@@ -257,28 +282,28 @@
   </div>
 </section>
 
-<!-- Memo -->
 <section>
-  <h2>📝 メモ</h2>
+  <h2>メモ</h2>
   <div class="card">
-    <ul style="padding-left: 20px; color: var(--text); line-height: 1.8;">
+    <ul class="memo">
       <li>営業日境界は 5:00 JST（翌朝5時までを当日として集計）</li>
-      <li>4月は18日時点で既に3月総売上を超過。単純按分による4月末見込み ≈ <b style="color: var(--accent)">¥1,046,917</b></li>
+      <li>4月は18日時点で既に3月総売上を超過。単純按分による4月末見込み ≈ <b>¥1,046,917</b></li>
       <li>来店人数は +32.9% と大幅増、一方で一人あたり単価は −21.6%（低単価メニューの構成比増、もしくはグループ客増の可能性）</li>
-      <li>決済方法は 4月に現金比率が 27% → 35% に上昇</li>
+      <li>決済方法は4月に現金比率が 27% → 35% に上昇</li>
       <li>取得条件: location=LJ9MN31J94JP0, state=COMPLETED</li>
     </ul>
   </div>
 </section>
 
-<footer>Generated by Claude Code ／ Square Orders API 集計</footer>
+<footer>Square Orders API 集計 ／ Generated 2026-04-19</footer>
 
 </div>
 
 <script>
-Chart.defaults.color = '#9aa3ad';
-Chart.defaults.borderColor = '#2d3746';
-Chart.defaults.font.family = "-apple-system, 'Hiragino Sans', 'Yu Gothic', sans-serif";
+Chart.defaults.color = '#6b7280';
+Chart.defaults.borderColor = '#e5e7eb';
+Chart.defaults.font.family = "-apple-system, 'Hiragino Kaku Gothic ProN', 'Yu Gothic', sans-serif";
+Chart.defaults.font.size = 11;
 
 const marDaily = {
   labels: ['3/11','3/15','3/16','3/17','3/18','3/19','3/20','3/21','3/22','3/23','3/24','3/25','3/27','3/28','3/29','3/30','3/31'],
@@ -292,21 +317,21 @@ const aprDaily = {
 function barChart(id, labels, data, color) {
   return new Chart(document.getElementById(id), {
     type: 'bar',
-    data: { labels, datasets: [{ data, backgroundColor: color, borderRadius: 3 }] },
+    data: { labels, datasets: [{ data, backgroundColor: color, borderRadius: 2, maxBarThickness: 28 }] },
     options: {
       responsive: true, maintainAspectRatio: false,
       plugins: { legend: { display: false },
         tooltip: { callbacks: { label: (c) => '¥' + c.raw.toLocaleString('ja-JP') } } },
       scales: {
-        y: { beginAtZero: true, ticks: { callback: v => '¥' + (v/1000) + 'k' }, grid: { color: '#2d3746' } },
+        y: { beginAtZero: true, ticks: { callback: v => '¥' + (v/1000) + 'k' }, grid: { color: '#f3f4f6' } },
         x: { grid: { display: false } }
       }
     }
   });
 }
 
-barChart('marDaily', marDaily.labels, marDaily.data, '#e8b959');
-barChart('aprDaily', aprDaily.labels, aprDaily.data, '#d96b5a');
+barChart('marDaily', marDaily.labels, marDaily.data, '#60a5fa');
+barChart('aprDaily', aprDaily.labels, aprDaily.data, '#34d399');
 
 const marPay = {
   labels: ['カード（VISA）','現金','カード（AMEX）','カード（MASTERCARD）','カード（JCB）'],
@@ -320,11 +345,12 @@ const aprPay = {
 function doughnut(id, labels, data, colors) {
   return new Chart(document.getElementById(id), {
     type: 'doughnut',
-    data: { labels, datasets: [{ data, backgroundColor: colors, borderColor: '#1a2028', borderWidth: 2 }] },
+    data: { labels, datasets: [{ data, backgroundColor: colors, borderColor: '#ffffff', borderWidth: 2 }] },
     options: {
       responsive: true, maintainAspectRatio: false,
+      cutout: '55%',
       plugins: {
-        legend: { position: 'right', labels: { font: { size: 11 }, boxWidth: 12 } },
+        legend: { position: 'right', labels: { font: { size: 11 }, boxWidth: 12, padding: 8 } },
         tooltip: { callbacks: {
           label: (c) => {
             const total = c.dataset.data.reduce((s,v)=>s+v,0);
@@ -337,7 +363,7 @@ function doughnut(id, labels, data, colors) {
   });
 }
 
-const palette = ['#e8b959','#6abf69','#d96b5a','#7aa6d9','#b590d9'];
+const palette = ['#60a5fa','#34d399','#fbbf24','#f87171','#a78bfa'];
 doughnut('marPay', marPay.labels, marPay.data, palette);
 doughnut('aprPay', aprPay.labels, aprPay.data, palette);
 
@@ -368,10 +394,9 @@ const aprItems = [
 
 function fillItems(tbodyId, rows) {
   const tb = document.getElementById(tbodyId);
-  const medals = ['🥇','🥈','🥉','4','5','6','7','8','9','10'];
   rows.forEach(([name, qty, amt], i) => {
     const tr = document.createElement('tr');
-    tr.innerHTML = `<td class="rank">${medals[i]}</td><td>${name}</td><td class="num">${qty}</td><td class="num">¥${amt.toLocaleString('ja-JP')}</td>`;
+    tr.innerHTML = `<td class="rank">${i+1}</td><td>${name}</td><td class="num">${qty}</td><td class="num">¥${amt.toLocaleString('ja-JP')}</td>`;
     tb.appendChild(tr);
   });
 }
