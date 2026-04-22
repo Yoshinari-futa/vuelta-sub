@@ -104,6 +104,14 @@
     {
       "src": "/customer-receipt-oku",
       "dest": "/api/customer-receipt-oku.js"
+    },
+    {
+      "src": "/concierge",
+      "dest": "/public/concierge.html"
+    },
+    {
+      "src": "/api/concierge-chat",
+      "dest": "/api/concierge-chat.js"
     }
   ]
 }
