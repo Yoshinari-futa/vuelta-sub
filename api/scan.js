@@ -11,8 +11,17 @@ const parseVisitCount = require('../lib/parse-visit-count');
 const { getPassKitAuth } = require('../lib/passkit-auth');
 const { TIER_BASE, TIER_SILVER, TIER_GOLD, TIER_BLACK, TIER_RAINBOW } = require('../lib/passkit-tier-ids');
 const { getGeofenceLocations } = require('../lib/geofence');
+const { getReferralBackFields } = require('../lib/referral');
+const {
+  META_FOOD_COUPONS,
+  META_PENDING_REFERRAL,
+  readFoodCoupons,
+  readPendingReferral,
+  adjustFoodCoupons,
+  findMemberByExternalId,
+} = require('../lib/coupons');
 
-const SCAN_API_VERSION = '2026-04-10-v13-geofence';
+const SCAN_API_VERSION = '2026-04-24-v14-referral';
 
 // ── ティア判定 ──
 // Base(白): 0〜3, Gold(金): 4〜15, Silver(銀): 16〜50, Black(黒): 51〜99, Rainbow(虹): 100+
@@ -252,14 +261,18 @@ module.exports = async function handler(req, res) {
     }
 
     // 成功時の共通レスポンス
-    const successResponse = (via) => ({
+    const successResponse = (via, extra = {}) => ({
       success: true,
       member: displayName,
+      memberId: member.id,
       visits: newPoints,
       previousVisits: currentPoints,
       tier: newTier.label,
       tierId: newTier.id,
       tierChanged,
+      foodCoupons: extra.foodCoupons != null ? extra.foodCoupons : readFoodCoupons(member),
+      referralGranted: !!extra.referralGranted,
+      referrerName: extra.referrerName || null,
       message: tierChanged
         ? `${displayName}さん ${newPoints}回目の来店！🎉 ${newTier.label}ランクに昇格！`
         : `${displayName}さん ${newPoints}回目の来店！`,
@@ -271,19 +284,44 @@ module.exports = async function handler(req, res) {
     // ── Step 2: ポイント更新 + ティア変更（3段階フォールバック） ──
     const results = {};
 
-    // 2a: PUT /members/member（ポイント＋ティア＋ジオフェンス＋最終来店日を同時更新）
+    // 紹介成立判定（metaData.pendingReferralReward が入った状態で初めて来店スキャン）
+    const pendingRefId = readPendingReferral(member);
+    let referrerMember = null;
+    let grantedFoodCoupons = readFoodCoupons(member);
+    const nextMetaData = {
+      ...(member.metaData || {}),
+      lastVisit: new Date().toISOString(),
+      reminderSent: '',  // スキャン時にリマインドフラグをリセット
+    };
+
+    if (pendingRefId && pendingRefId !== (member.externalId || member.id)) {
+      referrerMember = await findMemberByExternalId({
+        token,
+        baseUrl,
+        programId: effectiveProgramId,
+        externalId: pendingRefId,
+      });
+      if (referrerMember) {
+        grantedFoodCoupons += 1;
+        nextMetaData[META_FOOD_COUPONS] = String(grantedFoodCoupons);
+        nextMetaData[META_PENDING_REFERRAL] = '';
+        console.log(`[SCAN] Referral grant: ${displayName} +1 food coupon (referrer=${pendingRefId})`);
+      } else {
+        console.warn(`[SCAN] Referrer not found: externalId=${pendingRefId}. Clearing pending flag.`);
+        nextMetaData[META_PENDING_REFERRAL] = '';
+      }
+    }
+
+    // 2a: PUT /members/member（ポイント＋ティア＋ジオフェンス＋最終来店日＋紹介報酬を同時更新）
     const updateBody = {
       id: member.id,
       programId: effectiveProgramId,
       tierId: newTier.id,
       points: newPoints,
-      metaData: {
-        ...(member.metaData || {}),
-        lastVisit: new Date().toISOString(),
-        reminderSent: '',  // スキャン時にリマインドフラグをリセット
-      },
+      metaData: nextMetaData,
       passOverrides: {
         locations: getGeofenceLocations(),
+        backFields: getReferralBackFields(member.externalId || member.id),
       },
     };
     try {
@@ -296,7 +334,54 @@ module.exports = async function handler(req, res) {
       results.updateMember = { status: r.status, ok: r.ok, body: t.substring(0, 300) };
       console.log(`[SCAN] updateMember: ${r.status} ${t.substring(0, 200)}`);
       if (r.ok) {
-        return res.status(200).json(successResponse('updateMember'));
+        // 紹介者側にもフードクーポンを +1（成立時のみ）
+        let referrerName = null;
+        if (referrerMember) {
+          const refResult = await adjustFoodCoupons({
+            token,
+            baseUrl,
+            member: referrerMember,
+            delta: 1,
+          });
+          referrerName =
+            referrerMember.person?.displayName ||
+            [referrerMember.person?.forenames, referrerMember.person?.surname].filter(Boolean).join(' ') ||
+            'Member';
+          console.log(`[SCAN] Referrer +1 coupon: ${referrerName} -> ${refResult.ok ? 'OK' : 'FAIL'}`);
+
+          // Slack 通知
+          const slackUrl = process.env.SLACK_WEBHOOK_URL;
+          if (slackUrl) {
+            try {
+              await fetch(slackUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  blocks: [
+                    { type: 'header', text: { type: 'plain_text', text: '🍽️ 紹介成立！', emoji: true } },
+                    {
+                      type: 'section',
+                      text: {
+                        type: 'mrkdwn',
+                        text: `*${referrerName}* さんの紹介で *${displayName}* さんが初来店\n両者にフード 1 品無料クーポンを付与しました`,
+                      },
+                    },
+                  ],
+                }),
+              });
+            } catch (slackErr) {
+              console.error(`[SCAN] Referral Slack notify failed: ${slackErr.message}`);
+            }
+          }
+        }
+
+        return res.status(200).json(
+          successResponse('updateMember', {
+            foodCoupons: grantedFoodCoupons,
+            referralGranted: !!referrerMember,
+            referrerName,
+          })
+        );
       }
     } catch (e) {
       results.updateMember = { error: e.message };
