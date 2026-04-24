@@ -12,6 +12,7 @@ const { getPassKitAuth } = require('../lib/passkit-auth');
 const { TIER_BASE, TIER_SILVER, TIER_GOLD, TIER_BLACK, TIER_RAINBOW } = require('../lib/passkit-tier-ids');
 const { getGeofenceLocations } = require('../lib/geofence');
 const { getReferralBackFields, getReferralMetaData } = require('../lib/referral');
+const { getWalletPushTrigger } = require('../lib/wallet-push');
 const {
   META_FOOD_COUPONS,
   META_PENDING_REFERRAL,
@@ -314,15 +315,18 @@ module.exports = async function handler(req, res) {
     }
 
     // 2a: PUT /members/member（ポイント＋ティア＋ジオフェンス＋最終来店日＋紹介報酬を同時更新）
+    const push = getWalletPushTrigger();
     const updateBody = {
       id: member.id,
       programId: effectiveProgramId,
       tierId: newTier.id,
       points: newPoints,
+      secondaryPoints: push.secondaryPoints,  // Wallet push 発火用
       metaData: nextMetaData,
       passOverrides: {
         locations: getGeofenceLocations(),
         backFields: getReferralBackFields(member.externalId || member.id),
+        relevantDate: push.relevantDate,  // Wallet push 発火用
       },
     };
     try {

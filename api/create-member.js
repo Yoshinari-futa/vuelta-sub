@@ -9,6 +9,7 @@ const { getPassKitAuth } = require('../lib/passkit-auth');
 const { TIER_BASE } = require('../lib/passkit-tier-ids');
 const { getGeofenceLocations } = require('../lib/geofence');
 const { getReferralBackFields, getReferralMetaData } = require('../lib/referral');
+const { getWalletPushTrigger } = require('../lib/wallet-push');
 
 module.exports = async function handler(req, res) {
   if (req.method !== 'POST') {
@@ -50,6 +51,7 @@ module.exports = async function handler(req, res) {
         externalId: extId,
         points: 0,
         tierPoints: 0,
+        secondaryPoints: Math.floor(Date.now() / 1000),
         metaData: getReferralMetaData(extId),
         passOverrides: {
           imageIds: {
@@ -57,6 +59,7 @@ module.exports = async function handler(req, res) {
           },
           locations: getGeofenceLocations(),
           backFields: getReferralBackFields(extId),
+          relevantDate: new Date().toISOString(),
         },
       }),
       signal: controller.signal,
