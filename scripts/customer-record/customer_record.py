@@ -320,46 +320,69 @@ def main():
 
     processed = load_processed()
     new_count = 0
+    skip_already = 0
+    skip_no_template = 0
+    error_count = 0
 
-    for msg in messages:
-        ts = msg.get("ts", "")
-        if ts in processed:
-            continue
+    try:
+        for msg in messages:
+            ts = msg.get("ts", "")
+            if ts in processed:
+                skip_already += 1
+                continue
 
-        text = msg.get("text", "")
-        fields = parse_message(text)
-        if fields is None:
-            continue
+            text = msg.get("text", "")
+            fields = parse_message(text)
+            if fields is None:
+                skip_no_template += 1
+                continue
 
-        name = fields.get("名前", "不明")
-        is_new = fields.get("新規", "いいえ") == "はい"
-        log.info(f"処理中: {name} / 新規={is_new} (ts={ts})")
+            try:
+                name = fields.get("名前", "不明")
+                is_new = fields.get("新規", "いいえ") == "はい"
+                log.info(f"処理中: {name} / 新規={is_new} (ts={ts})")
 
-        ts_dt = datetime.fromtimestamp(float(ts), tz=JST)
-        visit_date = ts_dt.date().isoformat()
+                ts_dt = datetime.fromtimestamp(float(ts), tz=JST)
+                visit_date = ts_dt.date().isoformat()
 
-        customer_page_url = None
+                customer_page_url = None
 
-        if is_new:
-            # 新規：お客様ノートを作成
-            customer_page_url = create_customer(notion_token, customer_db_id, fields, visit_date)
-        else:
-            # リピーター：名前で検索
-            customer_page_url = search_customer_by_name(notion_token, customer_db_id, name)
-            if customer_page_url:
-                update_customer(notion_token, customer_page_url, visit_date)
-            else:
-                log.info(f"  名前が見つからないため新規登録: {name}")
-                customer_page_url = create_customer(notion_token, customer_db_id, fields, visit_date)
+                if is_new:
+                    # 新規：お客様ノートを作成
+                    customer_page_url = create_customer(notion_token, customer_db_id, fields, visit_date)
+                else:
+                    # リピーター：名前で検索
+                    customer_page_url = search_customer_by_name(notion_token, customer_db_id, name)
+                    if customer_page_url:
+                        update_customer(notion_token, customer_page_url, visit_date)
+                    else:
+                        log.info(f"  名前が見つからないため新規登録: {name}")
+                        customer_page_url = create_customer(notion_token, customer_db_id, fields, visit_date)
 
-        # 来店記録を登録（お客様ノートと紐付け）
-        create_visit_record(notion_token, visit_db_id, fields, ts, customer_page_url)
+                # 来店記録を登録（お客様ノートと紐付け）
+                create_visit_record(notion_token, visit_db_id, fields, ts, customer_page_url)
 
-        processed.add(ts)
-        new_count += 1
+                processed.add(ts)
+                new_count += 1
+            except Exception as e:
+                error_count += 1
+                log.error(f"  メッセージ処理失敗 (ts={ts}, name={fields.get('名前','?')}): {e}",
+                          exc_info=True)
+                # このメッセージは processed に追加せず、次回リトライさせる
+                continue
+    finally:
+        save_processed(processed)
 
-    save_processed(processed)
-    log.info(f"=== 完了: {new_count}件登録 ===")
+    log.info(
+        f"=== 完了: 登録 {new_count}件 / "
+        f"既処理スキップ {skip_already}件 / "
+        f"テンプレート無しスキップ {skip_no_template}件 / "
+        f"エラー {error_count}件 ==="
+    )
+
+    # エラーがあった場合は非ゼロ終了（ただし save_processed は完了済み）
+    if error_count > 0:
+        sys.exit(1)
 
 
 if __name__ == "__main__":
