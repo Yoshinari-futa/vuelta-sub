@@ -84,6 +84,47 @@ def get_slack_messages(token, channel_id, oldest_ts):
     return data.get("messages", [])
 
 
+def diagnose_slack(token, channel_id):
+    """【診断用】bot 同一性とチャンネル到達性を確認してログ出力"""
+    # auth.test: このトークンがどの bot のものか
+    try:
+        r = requests.post(
+            "https://slack.com/api/auth.test",
+            headers={"Authorization": f"Bearer {token}"},
+            timeout=10,
+        )
+        d = r.json()
+        if d.get("ok"):
+            log.info(f"  [診断] Bot: user={d.get('user')} / "
+                     f"bot_id={d.get('bot_id')} / team={d.get('team')} "
+                     f"/ url={d.get('url')}")
+        else:
+            log.warning(f"  [診断] auth.test 失敗: {d.get('error')}")
+    except Exception as e:
+        log.warning(f"  [診断] auth.test 例外: {e}")
+
+    # conversations.info: チャンネルが読めるか・bot がメンバーか
+    try:
+        r = requests.get(
+            "https://slack.com/api/conversations.info",
+            headers={"Authorization": f"Bearer {token}"},
+            params={"channel": channel_id},
+            timeout=10,
+        )
+        d = r.json()
+        if d.get("ok"):
+            ch = d.get("channel", {})
+            log.info(f"  [診断] Channel: name=#{ch.get('name')} / "
+                     f"id={ch.get('id')} / is_member={ch.get('is_member')} "
+                     f"/ is_private={ch.get('is_private')} "
+                     f"/ is_archived={ch.get('is_archived')} "
+                     f"/ num_members={ch.get('num_members')}")
+        else:
+            log.warning(f"  [診断] conversations.info 失敗: {d.get('error')}")
+    except Exception as e:
+        log.warning(f"  [診断] conversations.info 例外: {e}")
+
+
 def parse_message(text):
     """【来店記録】フォーマットのメッセージをパース"""
     if "【来店記録】" not in text:
@@ -314,9 +355,11 @@ def main():
         if not val:
             raise RuntimeError(f"環境変数 {key} が未設定です")
 
+    diagnose_slack(slack_token, channel_id)
+
     oldest = str(time.time() - 48 * 3600)
     messages = get_slack_messages(slack_token, channel_id, oldest)
-    log.info(f"取得メッセージ数: {len(messages)}件")
+    log.info(f"取得メッセージ数: {len(messages)}件 (oldest={oldest})")
 
     processed = load_processed()
     new_count = 0
