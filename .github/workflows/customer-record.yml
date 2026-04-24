@@ -44,13 +44,14 @@ jobs:
             echo "No processed file to commit"
             exit 0
           fi
-          if git diff --quiet -- "$FILE"; then
-            echo "No changes to $FILE"
-            exit 0
-          fi
           git config user.name  "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add "$FILE"
+          # 未追跡ファイルにも対応するため --cached で判定
+          if git diff --cached --quiet -- "$FILE"; then
+            echo "No changes to $FILE"
+            exit 0
+          fi
           git commit -m "chore(customer-record): update processed_messages.json [skip ci]"
           # main 以外（手動ブランチ実行）でも動くよう現在ブランチへ push
           git push origin HEAD:${GITHUB_REF#refs/heads/}
