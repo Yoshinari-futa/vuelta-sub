@@ -1,21 +1,35 @@
 #!/usr/bin/env python3
 """
-Slack #お客様記録 チャンネルのメッセージを読み取り、
+Slack #03-guests_顧客管理 チャンネルの投稿を読み取り、
 Notionのお客様ノート・来店記録データベースに自動登録するスクリプト。
-毎日深夜2時にlaunchdから実行される。
+毎日深夜2時にGitHub Actions の cron から実行される。
 
-【Slackテンプレート】
-【来店記録】
-名前: タケシさん
-新規: はい          ← 初来店はいはい、リピーターはいいえ
-人数: 2
-注文: 桜尾ジントニック×2
-メモ: 野球の話で盛り上がった
-次回: 新シグネチャ勧める
-流入: Instagram
-好み: ジン系
-満足度: とても良い
-写真OK: いいえ
+対応フォーマット:
+
+(A) Slack Workflow フォーム投稿 (subtype=bot_message)
+    *名前*
+    タケシさん
+    *新規/リピーター*
+    新規
+    *人数*
+    2
+    *メモ*
+    野球の話で盛り上がった
+    *紹介者*
+    華
+
+(B) 旧【来店記録】プレーンテキスト (後方互換)
+    【来店記録】
+    名前: タケシさん
+    新規: はい
+    人数: 2
+    注文: 桜尾ジントニック×2
+    メモ: ...
+    次回: ...
+    流入: Instagram
+    好み: ジン系
+    満足度: とても良い
+    写真OK: いいえ
 """
 
 import json
@@ -84,21 +98,97 @@ def get_slack_messages(token, channel_id, oldest_ts):
     return data.get("messages", [])
 
 
-def parse_message(text):
-    """【来店記録】フォーマットのメッセージをパース"""
+def diagnose_slack(token, channel_id):
+    """【診断用】bot 同一性とチャンネル到達性を確認してログ出力"""
+    # auth.test: このトークンがどの bot のものか
+    try:
+        r = requests.post(
+            "https://slack.com/api/auth.test",
+            headers={"Authorization": f"Bearer {token}"},
+            timeout=10,
+        )
+        d = r.json()
+        if d.get("ok"):
+            log.info(f"  [診断] Bot: user={d.get('user')} / "
+                     f"bot_id={d.get('bot_id')} / team={d.get('team')} "
+                     f"/ url={d.get('url')}")
+        else:
+            log.warning(f"  [診断] auth.test 失敗: {d.get('error')}")
+    except Exception as e:
+        log.warning(f"  [診断] auth.test 例外: {e}")
+
+    # conversations.info: チャンネルが読めるか・bot がメンバーか
+    try:
+        r = requests.get(
+            "https://slack.com/api/conversations.info",
+            headers={"Authorization": f"Bearer {token}"},
+            params={"channel": channel_id},
+            timeout=10,
+        )
+        d = r.json()
+        if d.get("ok"):
+            ch = d.get("channel", {})
+            log.info(f"  [診断] Channel: name=#{ch.get('name')} / "
+                     f"id={ch.get('id')} / is_member={ch.get('is_member')} "
+                     f"/ is_private={ch.get('is_private')} "
+                     f"/ is_archived={ch.get('is_archived')} "
+                     f"/ num_members={ch.get('num_members')}")
+        else:
+            log.warning(f"  [診断] conversations.info 失敗: {d.get('error')}")
+    except Exception as e:
+        log.warning(f"  [診断] conversations.info 例外: {e}")
+
+
+def parse_workflow_form(text):
+    """Slack Workflow フォーム投稿（bot_message）形式をパース。
+    構造: *ラベル*\\n値\\n*ラベル*\\n値 ..."""
+    if not text or "*名前*" not in text:
+        return None
+
+    # Slack ラベル → スクリプト内部キー
+    label_map = {
+        "名前":          "名前",
+        "新規/リピーター": "__新規raw",  # 後処理で「はい/いいえ」に変換
+        "人数":          "人数",
+        "メモ":          "メモ",
+        "紹介者":        "紹介者",
+    }
+
+    fields = {}
+    for slack_label, canonical in label_map.items():
+        # *LABEL* の次の行を値として抽出
+        m = re.search(
+            rf"\*{re.escape(slack_label)}\*\s*\n([^\n]*)",
+            text,
+        )
+        if m:
+            value = m.group(1).strip()
+            if value:
+                fields[canonical] = value
+
+    # 新規/リピーター → 新規(はい/いいえ)
+    raw = fields.pop("__新規raw", None)
+    if raw is not None:
+        fields["新規"] = "はい" if raw == "新規" else "いいえ"
+
+    return fields if fields else None
+
+
+def parse_legacy_template(text):
+    """旧【来店記録】プレーンテキスト形式をパース"""
     if "【来店記録】" not in text:
         return None
 
     fields = {}
     patterns = {
-        "名前":  r"名前[：:]\s*(.+)",
-        "新規":  r"新規[：:]\s*(はい|いいえ)",
-        "人数":  r"人数[：:]\s*(\d+)",
-        "注文":  r"注文[：:]\s*(.+)",
-        "メモ":  r"メモ[：:]\s*(.+)",
-        "次回":  r"次回[：:]\s*(.+)",
-        "流入":  r"流入[：:]\s*(.+)",
-        "好み":  r"好み[：:]\s*(.+)",
+        "名前":   r"名前[：:]\s*(.+)",
+        "新規":   r"新規[：:]\s*(はい|いいえ)",
+        "人数":   r"人数[：:]\s*(\d+)",
+        "注文":   r"注文[：:]\s*(.+)",
+        "メモ":   r"メモ[：:]\s*(.+)",
+        "次回":   r"次回[：:]\s*(.+)",
+        "流入":   r"流入[：:]\s*(.+)",
+        "好み":   r"好み[：:]\s*(.+)",
         "満足度": r"満足度[：:]\s*(.+)",
         "写真OK": r"写真OK[：:]\s*(はい|いいえ)",
     }
@@ -108,6 +198,11 @@ def parse_message(text):
             fields[key] = m.group(1).strip()
 
     return fields if fields else None
+
+
+def parse_message(text):
+    """メッセージを新旧両フォーマットでパース"""
+    return parse_workflow_form(text) or parse_legacy_template(text)
 
 
 # ──────────────────────────────
@@ -257,6 +352,8 @@ def create_visit_record(token, visit_db_id, fields, message_ts, customer_page_ur
         memo_parts.append(fields["メモ"])
     if "流入" in fields:
         memo_parts.append(f"流入: {fields['流入']}")
+    if "紹介者" in fields:
+        memo_parts.append(f"紹介者: {fields['紹介者']}")
     if memo_parts:
         props["雰囲気・メモ"] = {"rich_text": [{"text": {"content": "\n".join(memo_parts)}}]}
     if "次回" in fields:
@@ -314,52 +411,77 @@ def main():
         if not val:
             raise RuntimeError(f"環境変数 {key} が未設定です")
 
+    diagnose_slack(slack_token, channel_id)
+
     oldest = str(time.time() - 48 * 3600)
     messages = get_slack_messages(slack_token, channel_id, oldest)
-    log.info(f"取得メッセージ数: {len(messages)}件")
+    log.info(f"取得メッセージ数: {len(messages)}件 (oldest={oldest})")
 
     processed = load_processed()
     new_count = 0
+    skip_already = 0
+    skip_no_template = 0
+    error_count = 0
 
-    for msg in messages:
-        ts = msg.get("ts", "")
-        if ts in processed:
-            continue
+    try:
+        for msg in messages:
+            ts = msg.get("ts", "")
+            if ts in processed:
+                skip_already += 1
+                continue
 
-        text = msg.get("text", "")
-        fields = parse_message(text)
-        if fields is None:
-            continue
+            text = msg.get("text", "")
+            fields = parse_message(text)
+            if fields is None:
+                skip_no_template += 1
+                continue
 
-        name = fields.get("名前", "不明")
-        is_new = fields.get("新規", "いいえ") == "はい"
-        log.info(f"処理中: {name} / 新規={is_new} (ts={ts})")
+            try:
+                name = fields.get("名前", "不明")
+                is_new = fields.get("新規", "いいえ") == "はい"
+                log.info(f"処理中: {name} / 新規={is_new} (ts={ts})")
 
-        ts_dt = datetime.fromtimestamp(float(ts), tz=JST)
-        visit_date = ts_dt.date().isoformat()
+                ts_dt = datetime.fromtimestamp(float(ts), tz=JST)
+                visit_date = ts_dt.date().isoformat()
 
-        customer_page_url = None
+                customer_page_url = None
 
-        if is_new:
-            # 新規：お客様ノートを作成
-            customer_page_url = create_customer(notion_token, customer_db_id, fields, visit_date)
-        else:
-            # リピーター：名前で検索
-            customer_page_url = search_customer_by_name(notion_token, customer_db_id, name)
-            if customer_page_url:
-                update_customer(notion_token, customer_page_url, visit_date)
-            else:
-                log.info(f"  名前が見つからないため新規登録: {name}")
-                customer_page_url = create_customer(notion_token, customer_db_id, fields, visit_date)
+                if is_new:
+                    # 新規：お客様ノートを作成
+                    customer_page_url = create_customer(notion_token, customer_db_id, fields, visit_date)
+                else:
+                    # リピーター：名前で検索
+                    customer_page_url = search_customer_by_name(notion_token, customer_db_id, name)
+                    if customer_page_url:
+                        update_customer(notion_token, customer_page_url, visit_date)
+                    else:
+                        log.info(f"  名前が見つからないため新規登録: {name}")
+                        customer_page_url = create_customer(notion_token, customer_db_id, fields, visit_date)
 
-        # 来店記録を登録（お客様ノートと紐付け）
-        create_visit_record(notion_token, visit_db_id, fields, ts, customer_page_url)
+                # 来店記録を登録（お客様ノートと紐付け）
+                create_visit_record(notion_token, visit_db_id, fields, ts, customer_page_url)
 
-        processed.add(ts)
-        new_count += 1
+                processed.add(ts)
+                new_count += 1
+            except Exception as e:
+                error_count += 1
+                log.error(f"  メッセージ処理失敗 (ts={ts}, name={fields.get('名前','?')}): {e}",
+                          exc_info=True)
+                # このメッセージは processed に追加せず、次回リトライさせる
+                continue
+    finally:
+        save_processed(processed)
 
-    save_processed(processed)
-    log.info(f"=== 完了: {new_count}件登録 ===")
+    log.info(
+        f"=== 完了: 登録 {new_count}件 / "
+        f"既処理スキップ {skip_already}件 / "
+        f"テンプレート無しスキップ {skip_no_template}件 / "
+        f"エラー {error_count}件 ==="
+    )
+
+    # エラーがあった場合は非ゼロ終了（ただし save_processed は完了済み）
+    if error_count > 0:
+        sys.exit(1)
 
 
 if __name__ == "__main__":

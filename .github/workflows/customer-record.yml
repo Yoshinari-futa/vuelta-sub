@@ -10,6 +10,8 @@ jobs:
   run:
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    permissions:
+      contents: write
 
     steps:
       - name: Checkout
@@ -24,6 +26,7 @@ jobs:
         run: pip install -r scripts/customer-record/requirements.txt
 
       - name: Run customer record
+        id: run_script
         env:
           SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
           SLACK_CHANNEL_ID: ${{ secrets.SLACK_CHANNEL_ID }}
@@ -31,3 +34,24 @@ jobs:
           NOTION_VISIT_DB_ID: ${{ secrets.NOTION_VISIT_DB_ID }}
           NOTION_CUSTOMER_DB_ID: ${{ secrets.NOTION_CUSTOMER_DB_ID }}
         run: python scripts/customer-record/customer_record.py
+
+      - name: Commit processed_messages.json
+        if: always()
+        run: |
+          set -e
+          FILE=scripts/customer-record/processed_messages.json
+          if [ ! -f "$FILE" ]; then
+            echo "No processed file to commit"
+            exit 0
+          fi
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add "$FILE"
+          # 未追跡ファイルにも対応するため --cached で判定
+          if git diff --cached --quiet -- "$FILE"; then
+            echo "No changes to $FILE"
+            exit 0
+          fi
+          git commit -m "chore(customer-record): update processed_messages.json [skip ci]"
+          # main 以外（手動ブランチ実行）でも動くよう現在ブランチへ push
+          git push origin HEAD:${GITHUB_REF#refs/heads/}
