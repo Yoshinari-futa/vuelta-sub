@@ -7,6 +7,7 @@
 const nodemailer = require('nodemailer');
 const { getPassKitAuth } = require('../lib/passkit-auth');
 const { TIER_BASE } = require('../lib/passkit-tier-ids');
+const { getGeofenceLocations } = require('../lib/geofence');
 
 module.exports = async function handler(req, res) {
   if (req.method !== 'POST') {
@@ -52,19 +53,7 @@ module.exports = async function handler(req, res) {
           imageIds: {
             strip: '1KtkahvCl3rLRgLmxhxkaM',
           },
-          // ジオフェンス（VUELTA 近くでロック画面提案）を最初から注入。
-          // 後から /set-geofence を叩く必要を無くすため。
-          // 座標・文言は env で上書き可能。
-          locations: [
-            {
-              latitude: parseFloat(process.env.VUELTA_GEOFENCE_LAT || '') || 34.3893066,
-              longitude: parseFloat(process.env.VUELTA_GEOFENCE_LNG || '') || 132.4541823,
-              relevantText:
-                (process.env.VUELTA_GEOFENCE_TEXT || "You're near VUELTA. How about a drink tonight?").trim(),
-              altitude: 0,
-              radius: 300,
-            },
-          ],
+          locations: getGeofenceLocations(),
         },
       }),
       signal: controller.signal,

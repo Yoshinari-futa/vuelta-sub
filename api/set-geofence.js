@@ -10,10 +10,7 @@
 
 const { getPassKitAuth } = require('../lib/passkit-auth');
 const { TIER_BASE, TIER_SILVER, TIER_GOLD, TIER_BLACK, TIER_RAINBOW } = require('../lib/passkit-tier-ids');
-
-const DEFAULT_LAT = 34.3893066;
-const DEFAULT_LNG = 132.4541823;
-const DEFAULT_RELEVANT_TEXT = "You're near VUELTA. How about a drink tonight?";
+const { getGeofenceLocation } = require('../lib/geofence');
 
 const ALL_TIERS = [TIER_BASE, TIER_GOLD, TIER_SILVER, TIER_BLACK, TIER_RAINBOW];
 
@@ -35,17 +32,8 @@ module.exports = async function handler(req, res) {
       return res.status(500).json({ error: 'PASSKIT_PROGRAM_ID required' });
     }
 
-    const lat = parseFloat(process.env.VUELTA_GEOFENCE_LAT || '') || DEFAULT_LAT;
-    const lng = parseFloat(process.env.VUELTA_GEOFENCE_LNG || '') || DEFAULT_LNG;
-    const relevantText = (process.env.VUELTA_GEOFENCE_TEXT || DEFAULT_RELEVANT_TEXT).trim();
-
-    const locationEntry = {
-      latitude: lat,
-      longitude: lng,
-      relevantText,
-      altitude: 0,
-      radius: 300,
-    };
+    const locationEntry = getGeofenceLocation();
+    const { latitude: lat, longitude: lng, relevantText } = locationEntry;
 
     let token, baseUrl;
     try {
