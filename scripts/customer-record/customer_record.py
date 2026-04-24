@@ -1,21 +1,35 @@
 #!/usr/bin/env python3
 """
-Slack #お客様記録 チャンネルのメッセージを読み取り、
+Slack #03-guests_顧客管理 チャンネルの投稿を読み取り、
 Notionのお客様ノート・来店記録データベースに自動登録するスクリプト。
-毎日深夜2時にlaunchdから実行される。
+毎日深夜2時にGitHub Actions の cron から実行される。
 
-【Slackテンプレート】
-【来店記録】
-名前: タケシさん
-新規: はい          ← 初来店はいはい、リピーターはいいえ
-人数: 2
-注文: 桜尾ジントニック×2
-メモ: 野球の話で盛り上がった
-次回: 新シグネチャ勧める
-流入: Instagram
-好み: ジン系
-満足度: とても良い
-写真OK: いいえ
+対応フォーマット:
+
+(A) Slack Workflow フォーム投稿 (subtype=bot_message)
+    *名前*
+    タケシさん
+    *新規/リピーター*
+    新規
+    *人数*
+    2
+    *メモ*
+    野球の話で盛り上がった
+    *紹介者*
+    華
+
+(B) 旧【来店記録】プレーンテキスト (後方互換)
+    【来店記録】
+    名前: タケシさん
+    新規: はい
+    人数: 2
+    注文: 桜尾ジントニック×2
+    メモ: ...
+    次回: ...
+    流入: Instagram
+    好み: ジン系
+    満足度: とても良い
+    写真OK: いいえ
 """
 
 import json
@@ -125,21 +139,56 @@ def diagnose_slack(token, channel_id):
         log.warning(f"  [診断] conversations.info 例外: {e}")
 
 
-def parse_message(text):
-    """【来店記録】フォーマットのメッセージをパース"""
+def parse_workflow_form(text):
+    """Slack Workflow フォーム投稿（bot_message）形式をパース。
+    構造: *ラベル*\\n値\\n*ラベル*\\n値 ..."""
+    if not text or "*名前*" not in text:
+        return None
+
+    # Slack ラベル → スクリプト内部キー
+    label_map = {
+        "名前":          "名前",
+        "新規/リピーター": "__新規raw",  # 後処理で「はい/いいえ」に変換
+        "人数":          "人数",
+        "メモ":          "メモ",
+        "紹介者":        "紹介者",
+    }
+
+    fields = {}
+    for slack_label, canonical in label_map.items():
+        # *LABEL* の次の行を値として抽出
+        m = re.search(
+            rf"\*{re.escape(slack_label)}\*\s*\n([^\n]*)",
+            text,
+        )
+        if m:
+            value = m.group(1).strip()
+            if value:
+                fields[canonical] = value
+
+    # 新規/リピーター → 新規(はい/いいえ)
+    raw = fields.pop("__新規raw", None)
+    if raw is not None:
+        fields["新規"] = "はい" if raw == "新規" else "いいえ"
+
+    return fields if fields else None
+
+
+def parse_legacy_template(text):
+    """旧【来店記録】プレーンテキスト形式をパース"""
     if "【来店記録】" not in text:
         return None
 
     fields = {}
     patterns = {
-        "名前":  r"名前[：:]\s*(.+)",
-        "新規":  r"新規[：:]\s*(はい|いいえ)",
-        "人数":  r"人数[：:]\s*(\d+)",
-        "注文":  r"注文[：:]\s*(.+)",
-        "メモ":  r"メモ[：:]\s*(.+)",
-        "次回":  r"次回[：:]\s*(.+)",
-        "流入":  r"流入[：:]\s*(.+)",
-        "好み":  r"好み[：:]\s*(.+)",
+        "名前":   r"名前[：:]\s*(.+)",
+        "新規":   r"新規[：:]\s*(はい|いいえ)",
+        "人数":   r"人数[：:]\s*(\d+)",
+        "注文":   r"注文[：:]\s*(.+)",
+        "メモ":   r"メモ[：:]\s*(.+)",
+        "次回":   r"次回[：:]\s*(.+)",
+        "流入":   r"流入[：:]\s*(.+)",
+        "好み":   r"好み[：:]\s*(.+)",
         "満足度": r"満足度[：:]\s*(.+)",
         "写真OK": r"写真OK[：:]\s*(はい|いいえ)",
     }
@@ -149,6 +198,11 @@ def parse_message(text):
             fields[key] = m.group(1).strip()
 
     return fields if fields else None
+
+
+def parse_message(text):
+    """メッセージを新旧両フォーマットでパース"""
+    return parse_workflow_form(text) or parse_legacy_template(text)
 
 
 # ──────────────────────────────
@@ -298,6 +352,8 @@ def create_visit_record(token, visit_db_id, fields, message_ts, customer_page_ur
         memo_parts.append(fields["メモ"])
     if "流入" in fields:
         memo_parts.append(f"流入: {fields['流入']}")
+    if "紹介者" in fields:
+        memo_parts.append(f"紹介者: {fields['紹介者']}")
     if memo_parts:
         props["雰囲気・メモ"] = {"rich_text": [{"text": {"content": "\n".join(memo_parts)}}]}
     if "次回" in fields:
@@ -378,13 +434,6 @@ def main():
             fields = parse_message(text)
             if fields is None:
                 skip_no_template += 1
-                # 【診断】スキップしたメッセージの生textを先頭200文字だけ記録
-                preview = (text or "").replace("\n", " / ")[:200]
-                subtype = msg.get("subtype", "")
-                has_blocks = "blocks" in msg
-                log.info(f"  [診断] skip ts={ts} subtype={subtype!r} "
-                         f"has_blocks={has_blocks} text_len={len(text)} "
-                         f"text_preview={preview!r}")
                 continue
 
             try:
