@@ -10,7 +10,7 @@ const nodemailer = require('nodemailer');
 const { getPassKitAuth } = require('../../lib/passkit-auth');
 const { TIER_BASE } = require('../../lib/passkit-tier-ids');
 const { getGeofenceLocations } = require('../../lib/geofence');
-const { getReferralBackFields } = require('../../lib/referral');
+const { getReferralBackFields, getReferralMetaData } = require('../../lib/referral');
 const { META_PENDING_REFERRAL } = require('../../lib/coupons');
 
 // config は handler に付与（下部参照）
@@ -207,9 +207,12 @@ async function generatePassKitCard({ email, name, customerId, tierId, referrerId
         externalId: customerId,
         points: 0,
         tierPoints: 0,
-        metaData: referrerId && referrerId !== customerId
-          ? { [META_PENDING_REFERRAL]: referrerId }
-          : {},
+        metaData: {
+          ...getReferralMetaData(customerId),
+          ...(referrerId && referrerId !== customerId
+            ? { [META_PENDING_REFERRAL]: referrerId }
+            : {}),
+        },
         passOverrides: {
           imageIds: {
             strip: '1KtkahvCl3rLRgLmxhxkaM',

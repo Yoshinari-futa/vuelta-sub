@@ -8,7 +8,7 @@ const nodemailer = require('nodemailer');
 const { getPassKitAuth } = require('../lib/passkit-auth');
 const { TIER_BASE } = require('../lib/passkit-tier-ids');
 const { getGeofenceLocations } = require('../lib/geofence');
-const { getReferralBackFields } = require('../lib/referral');
+const { getReferralBackFields, getReferralMetaData } = require('../lib/referral');
 
 module.exports = async function handler(req, res) {
   if (req.method !== 'POST') {
@@ -50,6 +50,7 @@ module.exports = async function handler(req, res) {
         externalId: extId,
         points: 0,
         tierPoints: 0,
+        metaData: getReferralMetaData(extId),
         passOverrides: {
           imageIds: {
             strip: '1KtkahvCl3rLRgLmxhxkaM',
