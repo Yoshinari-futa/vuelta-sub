@@ -147,6 +147,27 @@
   .mode-row.show { display: block; }
   .mode-row a { color: #888; text-decoration: underline; cursor: pointer; }
   .mode-row a:active { color: #aaa; }
+
+  /* Torch（暗いバー向けのフラッシュライト） */
+  .torch-btn {
+    display: none;
+    position: absolute;
+    right: 16px;
+    bottom: 16px;
+    width: 48px;
+    height: 48px;
+    border-radius: 50%;
+    background: rgba(0,0,0,0.55);
+    border: 1px solid rgba(255,255,255,0.25);
+    color: #fff;
+    font-size: 22px;
+    cursor: pointer;
+    z-index: 10;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .torch-btn.show { display: block; }
+  .torch-btn.on { background: #ffc107; color: #111; border-color: #ffc107; }
+  .camera-box { position: relative; }
 </style>
 </head>
 <body>
@@ -168,6 +189,7 @@
     <div class="scan-line"></div>
     <div class="corner tl"></div><div class="corner tr"></div>
     <div class="corner bl"></div><div class="corner br"></div>
+    <button class="torch-btn" id="torchBtn" title="ライト" aria-label="Torch">🔦</button>
   </div>
 </div>
 <div class="hint" id="hint">バーコードをかざしてください</div>
@@ -279,6 +301,11 @@
   function onAuth() {
     document.getElementById('manualWrap').classList.add('show');
     document.getElementById('modeRow').classList.add('show');
+    // iOS Safari では最初のユーザー操作時に AudioContext を作らないと音が鳴らない
+    try {
+      audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+      if (audioCtx.state === 'suspended') audioCtx.resume();
+    } catch (_) {}
     startCamera();
   }
 
@@ -415,15 +442,23 @@
       nativeStream = await navigator.mediaDevices.getUserMedia({
         video: {
           facingMode: mobile ? 'environment' : 'user',
-          width: { ideal: 1280 },
-          height: { ideal: 720 },
+          width: { ideal: 1920 },
+          height: { ideal: 1080 },
+          // 可能ならブラウザに連続オートフォーカス・露出調整させる
+          // （非対応ブラウザは静かに無視される）
+          focusMode: 'continuous',
+          exposureMode: 'continuous',
+          whiteBalanceMode: 'continuous',
         },
       });
       videoEl.srcObject = nativeStream;
       await videoEl.play();
 
+      // トーチ有無を確認してボタンを表示
+      updateTorchButton(nativeStream);
+
       nativeDetector = new BarcodeDetector({
-        formats: ['pdf417', 'qr_code', 'aztec', 'data_matrix', 'code_128', 'code_39']
+        formats: ['pdf417', 'qr_code']  // PassKit は PDF417。QR は予備
       });
 
       dbg('カメラ起動OK (Native)');
@@ -450,6 +485,7 @@
           const memberId = extractMemberId(rawText);
           if (memberId) {
             scanning = false;
+            beep();
             if (navigator.vibrate) navigator.vibrate(100);
             stopAllScanners().then(() => {});
             document.getElementById('hint').textContent = '確認中...';
@@ -490,27 +526,32 @@
     readerDiv.style.display = 'block';
 
     const formats = [
-      Html5QrcodeSupportedFormats.QR_CODE,
-      Html5QrcodeSupportedFormats.PDF_417,
-      Html5QrcodeSupportedFormats.AZTEC,
-      Html5QrcodeSupportedFormats.DATA_MATRIX,
-      Html5QrcodeSupportedFormats.CODE_128,
-      Html5QrcodeSupportedFormats.CODE_39,
+      Html5QrcodeSupportedFormats.PDF_417,  // PassKit メイン
+      Html5QrcodeSupportedFormats.QR_CODE,  // 予備
     ];
 
     html5QrCode = new Html5Qrcode('qr-reader', { formatsToSupport: formats, verbose: false });
 
     const desktop = isDesktopLike();
-    // PDF417 は横長。PC は FaceTime（user）でお客様のスマホ画面を映す想定
+    // PDF417 は横長のバーコード。横幅いっぱい・縦は細めのスキャン枠を使う
     const scanConfig = {
-      fps: 12,
+      fps: 20,  // was 12 — 1 秒あたりのスキャン試行回数を 1.7 倍に
       qrbox: (w, h) => {
-        const m = Math.min(w, h);
-        return desktop
-          ? { width: Math.floor(m * 0.95), height: Math.floor(m * 0.38) }
-          : { width: Math.floor(m * 0.9), height: Math.floor(m * 0.45) };
+        // 画面幅の 95%、縦はその 1/3 程度（PDF417 の縦横比を想定）
+        return {
+          width: Math.floor(w * 0.95),
+          height: Math.floor(Math.min(h * 0.45, w * 0.35)),
+        };
       },
       aspectRatio: 1.0,
+      videoConstraints: {
+        facingMode: desktop ? 'user' : 'environment',
+        width: { ideal: 1920 },
+        height: { ideal: 1080 },
+        focusMode: 'continuous',
+        exposureMode: 'continuous',
+        whiteBalanceMode: 'continuous',
+      },
     };
 
     const tryStart = async (cameraIdOrConfig) => {
@@ -537,6 +578,10 @@
       if (innerVideo) { innerVideo.style.objectFit = 'cover'; innerVideo.style.borderRadius = '16px'; }
       const scanRegion = document.getElementById('qr-shaded-region');
       if (scanRegion) scanRegion.style.display = 'none';
+      // html5-qrcode が作った video 要素のストリームからトーチボタンを更新
+      if (innerVideo && innerVideo.srcObject) {
+        updateTorchButton(innerVideo.srcObject);
+      }
       dbg('カメラ起動OK (html5-qrcode)');
     } catch (err) {
       document.getElementById('hint').textContent = 'カメラを許可してください';
@@ -600,6 +645,7 @@
     }
 
     scanning = false;
+    beep();
     if (navigator.vibrate) navigator.vibrate(100);
     try { await html5QrCode.stop(); } catch (_) {}
     try { html5QrCode.clear(); } catch (_) {}
@@ -731,7 +777,67 @@
     }
   }
 
-  function resetScan() { startCamera(); }
+  function resetScan() {
+    setTorch(false);  // 次のスキャン前にトーチを切る
+    startCamera();
+  }
+
+  // ══════════════════════════════════════════════
+  //  Torch（暗所向けフラッシュライト）
+  // ══════════════════════════════════════════════
+  let torchTrack = null;
+  let torchOn = false;
+  const torchBtn = document.getElementById('torchBtn');
+
+  function updateTorchButton(stream) {
+    if (!stream) return;
+    const track = stream.getVideoTracks && stream.getVideoTracks()[0];
+    if (!track) return;
+    torchTrack = track;
+    const caps = typeof track.getCapabilities === 'function' ? track.getCapabilities() : {};
+    if (caps && caps.torch) {
+      torchBtn.classList.add('show');
+    } else {
+      torchBtn.classList.remove('show');
+    }
+  }
+
+  async function setTorch(on) {
+    if (!torchTrack) return;
+    try {
+      await torchTrack.applyConstraints({ advanced: [{ torch: !!on }] });
+      torchOn = !!on;
+      torchBtn.classList.toggle('on', torchOn);
+    } catch (e) {
+      dbg('torch err: ' + e.message);
+    }
+  }
+
+  torchBtn.addEventListener('click', (e) => {
+    e.preventDefault();
+    setTorch(!torchOn);
+  });
+
+  // ══════════════════════════════════════════════
+  //  成功時のピッ音（Web Audio）
+  // ══════════════════════════════════════════════
+  let audioCtx = null;
+  function beep() {
+    try {
+      audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+      if (audioCtx.state === 'suspended') audioCtx.resume();
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+      osc.type = 'sine';
+      osc.frequency.value = 900;
+      gain.gain.setValueAtTime(0.25, audioCtx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.15);
+      osc.start();
+      osc.stop(audioCtx.currentTime + 0.16);
+    } catch (_) { /* no-op */ }
+  }
 
   // ── フードクーポンパネル ──
   let currentCouponMemberId = null;
