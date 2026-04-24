@@ -10,6 +10,7 @@
 const parseVisitCount = require('../lib/parse-visit-count');
 const { getPassKitAuth } = require('../lib/passkit-auth');
 const { TIER_BASE, TIER_SILVER, TIER_GOLD, TIER_BLACK, TIER_RAINBOW } = require('../lib/passkit-tier-ids');
+const { getGeofenceLocations } = require('../lib/geofence');
 
 const SCAN_API_VERSION = '2026-04-10-v13-geofence';
 
@@ -282,15 +283,7 @@ module.exports = async function handler(req, res) {
         reminderSent: '',  // スキャン時にリマインドフラグをリセット
       },
       passOverrides: {
-        locations: [
-          {
-            latitude: 34.3893066,
-            longitude: 132.4541823,
-            relevantText: "You're near VUELTA. How about a drink tonight?",
-            altitude: 0,
-            radius: 300,
-          },
-        ],
+        locations: getGeofenceLocations(),
       },
     };
     try {
