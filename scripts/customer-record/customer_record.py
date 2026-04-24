@@ -378,6 +378,13 @@ def main():
             fields = parse_message(text)
             if fields is None:
                 skip_no_template += 1
+                # 【診断】スキップしたメッセージの生textを先頭200文字だけ記録
+                preview = (text or "").replace("\n", " / ")[:200]
+                subtype = msg.get("subtype", "")
+                has_blocks = "blocks" in msg
+                log.info(f"  [診断] skip ts={ts} subtype={subtype!r} "
+                         f"has_blocks={has_blocks} text_len={len(text)} "
+                         f"text_preview={preview!r}")
                 continue
 
             try:
