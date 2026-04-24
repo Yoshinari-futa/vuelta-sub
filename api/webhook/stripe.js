@@ -82,6 +82,9 @@ function getTransporter() {
   return nodemailer.createTransport({
     service: process.env.EMAIL_SERVICE || 'gmail',
     auth: { user, pass },
+    connectionTimeout: 10000,
+    greetingTimeout: 10000,
+    socketTimeout: 10000,
   });
 }
 
@@ -520,8 +523,9 @@ async function handler(req, res) {
 
   console.log(`[WEBHOOK] Event received: ${event.type} (${event.id})`);
 
-  // ===== Stripeに即座に200を返す（タイムアウト・リトライ防止）=====
-  res.json({ received: true });
+  // 注意: Vercel のサーバーレス関数は res.json() 後に処理が打ち切られる場合がある。
+  // メール送信・PassKit 生成・Slack 通知をすべて完了させてから 200 を返す。
+  // Stripe は webhook 応答を 30 秒待つので、各処理にタイムアウトを設けて時間内に収める。
 
   // ===== 新規決済完了 =====
   if (event.type === 'checkout.session.completed') {
@@ -540,7 +544,7 @@ async function handler(req, res) {
 
       if (!customerEmail) {
         console.error('[WEBHOOK] ERROR: No email found in session data');
-        return;
+        return res.json({ received: true, warning: 'no_email' });
       }
 
       const transporter = getTransporter();
@@ -658,6 +662,9 @@ async function handler(req, res) {
       console.error(`[WEBHOOK] Cancellation processing error: ${err.message}`);
     }
   }
+
+  // すべての処理が完了してから Stripe へ 200 応答（Vercel が早期に関数を打ち切らないよう最後に）
+  res.json({ received: true });
 }
 
 // Vercelではbodyのパースを無効にする（Stripe署名検証のため）
