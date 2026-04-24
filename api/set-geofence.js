@@ -11,7 +11,7 @@
 const { getPassKitAuth } = require('../lib/passkit-auth');
 const { TIER_BASE, TIER_SILVER, TIER_GOLD, TIER_BLACK, TIER_RAINBOW } = require('../lib/passkit-tier-ids');
 const { getGeofenceLocation } = require('../lib/geofence');
-const { getReferralBackFields } = require('../lib/referral');
+const { getReferralBackFields, getReferralMetaData } = require('../lib/referral');
 
 const ALL_TIERS = [TIER_BASE, TIER_GOLD, TIER_SILVER, TIER_BLACK, TIER_RAINBOW];
 
@@ -91,6 +91,10 @@ module.exports = async function handler(req, res) {
         const updateBody = {
           id: m.id,
           programId: m.programId || programId,
+          metaData: {
+            ...(m.metaData || {}),
+            ...getReferralMetaData(m.externalId || m.id),  // Information 欄を紹介リンクに差し替え
+          },
           passOverrides: {
             locations: [locationEntry],
             backFields: getReferralBackFields(m.externalId || m.id),

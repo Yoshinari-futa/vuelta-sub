@@ -11,7 +11,7 @@ const parseVisitCount = require('../lib/parse-visit-count');
 const { getPassKitAuth } = require('../lib/passkit-auth');
 const { TIER_BASE, TIER_SILVER, TIER_GOLD, TIER_BLACK, TIER_RAINBOW } = require('../lib/passkit-tier-ids');
 const { getGeofenceLocations } = require('../lib/geofence');
-const { getReferralBackFields } = require('../lib/referral');
+const { getReferralBackFields, getReferralMetaData } = require('../lib/referral');
 const {
   META_FOOD_COUPONS,
   META_PENDING_REFERRAL,
@@ -290,6 +290,7 @@ module.exports = async function handler(req, res) {
     let grantedFoodCoupons = readFoodCoupons(member);
     const nextMetaData = {
       ...(member.metaData || {}),
+      ...getReferralMetaData(member.externalId || member.id),  // Information 欄をリマインド後も紹介リンクに戻す
       lastVisit: new Date().toISOString(),
       reminderSent: '',  // スキャン時にリマインドフラグをリセット
     };
