@@ -12,6 +12,7 @@ const { TIER_BASE } = require('../../lib/passkit-tier-ids');
 const { getGeofenceLocations } = require('../../lib/geofence');
 const { getReferralBackFields, getReferralMetaData } = require('../../lib/referral');
 const { META_PENDING_REFERRAL } = require('../../lib/coupons');
+const { getWalletPushTrigger } = require('../../lib/wallet-push');
 
 // config は handler に付与（下部参照）
 
@@ -191,6 +192,7 @@ async function generatePassKitCard({ email, name, customerId, tierId, referrerId
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 5000);
 
+  const push = getWalletPushTrigger();
   try {
     const response = await fetch(apiUrl, {
       method: 'POST',
@@ -207,6 +209,7 @@ async function generatePassKitCard({ email, name, customerId, tierId, referrerId
         externalId: customerId,
         points: 0,
         tierPoints: 0,
+        secondaryPoints: push.secondaryPoints,
         metaData: {
           ...getReferralMetaData(customerId),
           ...(referrerId && referrerId !== customerId
@@ -219,6 +222,7 @@ async function generatePassKitCard({ email, name, customerId, tierId, referrerId
           },
           locations: getGeofenceLocations(),
           backFields: getReferralBackFields(customerId),
+          relevantDate: push.relevantDate,
         },
       }),
       signal: controller.signal,

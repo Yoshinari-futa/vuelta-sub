@@ -18,6 +18,7 @@
  */
 
 const { getPassKitAuth } = require('../lib/passkit-auth');
+const { getWalletPushTrigger } = require('../lib/wallet-push');
 
 const REMIND_MESSAGE_EN = "We miss you! Your next drink is waiting at VUELTA.";
 const INACTIVE_DAYS_DEFAULT = 14;
@@ -205,9 +206,11 @@ module.exports = async function handler(req, res) {
       });
       const messageWithStamp = `${REMIND_MESSAGE_EN} (${stamp})`;
 
+      const push = getWalletPushTrigger();
       const updateBody = {
         id: m.id,
         programId: m.programId || programId,
+        secondaryPoints: push.secondaryPoints,  // Wallet push 発火用（メタデータ変更だけでは push されない）
         metaData: {
           ...meta,
           // PassKit テンプレートで定義済みの Information フィールド。
@@ -215,6 +218,9 @@ module.exports = async function handler(req, res) {
           'universal.info': messageWithStamp,
           reminderSent: now.toISOString(),
           reminderMessage: messageWithStamp,
+        },
+        passOverrides: {
+          relevantDate: push.relevantDate,  // Wallet push 発火用
         },
       };
 
