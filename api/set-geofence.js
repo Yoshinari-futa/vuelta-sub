@@ -35,7 +35,7 @@ module.exports = async function handler(req, res) {
     }
 
     const locationEntry = getGeofenceLocation();
-    const { latitude: lat, longitude: lng, relevantText } = locationEntry;
+    const { lat, lon: lng, lockScreenMessage: relevantText } = locationEntry;
 
     let token, baseUrl;
     try {
