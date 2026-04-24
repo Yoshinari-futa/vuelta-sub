@@ -8,6 +8,7 @@ const nodemailer = require('nodemailer');
 const { getPassKitAuth } = require('../lib/passkit-auth');
 const { TIER_BASE } = require('../lib/passkit-tier-ids');
 const { getGeofenceLocations } = require('../lib/geofence');
+const { getReferralBackFields } = require('../lib/referral');
 
 module.exports = async function handler(req, res) {
   if (req.method !== 'POST') {
@@ -54,6 +55,7 @@ module.exports = async function handler(req, res) {
             strip: '1KtkahvCl3rLRgLmxhxkaM',
           },
           locations: getGeofenceLocations(),
+          backFields: getReferralBackFields(extId),
         },
       }),
       signal: controller.signal,

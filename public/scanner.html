@@ -107,6 +107,33 @@
   .result-card.error { border: 1px solid #e74c3c; }
   .result-card.error .name { color: #e74c3c; }
 
+  /* クーポン表示 */
+  .coupon-panel {
+    margin-top: 18px; padding: 14px 16px;
+    background: #2d5a3d; border-radius: 10px;
+    display: none;
+  }
+  .coupon-panel.show { display: block; }
+  .coupon-label { font-size: 10px; font-weight: 600; letter-spacing: 0.15em; text-transform: uppercase; color: rgba(255,255,255,0.7); margin-bottom: 6px; }
+  .coupon-count { font-size: 20px; font-weight: 700; color: #fff; margin-bottom: 10px; }
+  .coupon-count .icon { margin-right: 6px; }
+  .coupon-btn {
+    display: block; width: 100%; padding: 10px;
+    background: #fff; color: #2d5a3d; border: none;
+    border-radius: 50px; font-size: 12px; font-weight: 700; letter-spacing: 0.06em;
+    cursor: pointer; font-family: inherit;
+  }
+  .coupon-btn:disabled { opacity: 0.4; cursor: default; }
+  .coupon-btn.using { opacity: 0.6; }
+
+  .referral-banner {
+    margin-top: 12px; padding: 10px 14px;
+    background: #1f3a2b; border-radius: 8px;
+    color: #9bd4af; font-size: 12px; text-align: center;
+    display: none;
+  }
+  .referral-banner.show { display: block; }
+
   .next-btn {
     display: block; width: 100%; max-width: 400px;
     margin: 16px auto 32px; padding: 14px;
@@ -164,6 +191,12 @@
     <div class="visits" id="rVisits"></div>
     <div class="visits-label" id="rVisitsLabel">VISITS</div>
     <div class="tier-badge" id="rTier"></div>
+    <div class="referral-banner" id="rReferral"></div>
+    <div class="coupon-panel" id="rCouponPanel">
+      <div class="coupon-label">Food coupon</div>
+      <div class="coupon-count"><span class="icon">🍽️</span><span id="rCouponCount">0</span> 枚</div>
+      <button class="coupon-btn" id="rCouponBtn">クーポン 1 枚使用</button>
+    </div>
     <div class="msg" id="rMsg"></div>
   </div>
 </div>
@@ -328,6 +361,8 @@
     scanning = true;
     document.getElementById('result').classList.remove('show');
     document.getElementById('nextBtn').style.display = 'none';
+    document.getElementById('rReferral').classList.remove('show');
+    document.getElementById('rCouponPanel').classList.remove('show');
     document.getElementById('hint').textContent = 'バーコードをかざしてください';
     document.getElementById('manualInput').value = '';
     dbg('');
@@ -621,10 +656,23 @@
         } else {
           tierEl.style.display = 'none';
         }
+        // 紹介成立バナー
+        const refBanner = document.getElementById('rReferral');
+        if (data.referralGranted) {
+          const refName = data.referrerName ? data.referrerName + ' さんから' : '';
+          refBanner.textContent = '🎉 紹介成立！' + refName + 'フード1品無料クーポンを付与しました';
+          refBanner.classList.add('show');
+        } else {
+          refBanner.classList.remove('show');
+        }
+        // フードクーポン表示
+        updateCouponPanel(data.memberId, data.foodCoupons);
         if (navigator.vibrate) navigator.vibrate(80);
       } else {
         card.className = 'result-card error';
         document.getElementById('rTier').style.display = 'none';
+        document.getElementById('rReferral').classList.remove('show');
+        document.getElementById('rCouponPanel').classList.remove('show');
         if (resp.status === 401) {
           nameEl.textContent = 'PIN エラー';
           visitsEl.textContent = '✕';
@@ -684,6 +732,56 @@
   }
 
   function resetScan() { startCamera(); }
+
+  // ── フードクーポンパネル ──
+  let currentCouponMemberId = null;
+  const couponBtn = document.getElementById('rCouponBtn');
+
+  function updateCouponPanel(memberId, count) {
+    const panel = document.getElementById('rCouponPanel');
+    const countEl = document.getElementById('rCouponCount');
+    const n = parseInt(count, 10) || 0;
+    currentCouponMemberId = memberId || null;
+    countEl.textContent = n;
+    couponBtn.textContent = 'クーポン 1 枚使用';
+    couponBtn.classList.remove('using');
+    couponBtn.disabled = n <= 0 || !memberId;
+    if (n > 0) panel.classList.add('show');
+    else panel.classList.remove('show');
+  }
+
+  couponBtn.addEventListener('click', async () => {
+    if (!currentCouponMemberId || couponBtn.disabled) return;
+    if (!confirm('フード1品無料クーポンを 1 枚使用しますか？')) return;
+
+    couponBtn.disabled = true;
+    couponBtn.classList.add('using');
+    couponBtn.textContent = '使用中…';
+
+    try {
+      const r = await fetch('/use-coupon', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ memberId: currentCouponMemberId, secret: staffPin }),
+      });
+      const data = await r.json();
+      if (r.ok && data.success) {
+        if (navigator.vibrate) navigator.vibrate([60, 40, 60]);
+        updateCouponPanel(currentCouponMemberId, data.foodCoupons);
+        alert('✓ クーポン使用完了（残 ' + data.foodCoupons + ' 枚）');
+      } else {
+        alert('使用に失敗しました: ' + (data.error || r.status));
+        couponBtn.disabled = false;
+        couponBtn.classList.remove('using');
+        couponBtn.textContent = 'クーポン 1 枚使用';
+      }
+    } catch (err) {
+      alert('通信エラー: ' + err.message);
+      couponBtn.disabled = false;
+      couponBtn.classList.remove('using');
+      couponBtn.textContent = 'クーポン 1 枚使用';
+    }
+  });
 </script>
 </body>
 </html>

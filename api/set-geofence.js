@@ -11,6 +11,7 @@
 const { getPassKitAuth } = require('../lib/passkit-auth');
 const { TIER_BASE, TIER_SILVER, TIER_GOLD, TIER_BLACK, TIER_RAINBOW } = require('../lib/passkit-tier-ids');
 const { getGeofenceLocation } = require('../lib/geofence');
+const { getReferralBackFields } = require('../lib/referral');
 
 const ALL_TIERS = [TIER_BASE, TIER_GOLD, TIER_SILVER, TIER_BLACK, TIER_RAINBOW];
 
@@ -92,6 +93,7 @@ module.exports = async function handler(req, res) {
           programId: m.programId || programId,
           passOverrides: {
             locations: [locationEntry],
+            backFields: getReferralBackFields(m.externalId || m.id),
           },
         };
 

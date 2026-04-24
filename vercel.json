@@ -104,6 +104,18 @@
     {
       "src": "/customer-receipt-oku",
       "dest": "/api/customer-receipt-oku.js"
+    },
+    {
+      "src": "/use-coupon",
+      "dest": "/api/use-coupon.js"
+    },
+    {
+      "src": "/r/(?<id>[^/]+)",
+      "dest": "/api/referral-redirect.js?id=$id"
+    },
+    {
+      "src": "/share/(?<id>[^/]+)",
+      "dest": "/api/share-page.js?id=$id"
     }
   ]
 }

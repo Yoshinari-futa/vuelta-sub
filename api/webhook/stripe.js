@@ -10,6 +10,8 @@ const nodemailer = require('nodemailer');
 const { getPassKitAuth } = require('../../lib/passkit-auth');
 const { TIER_BASE } = require('../../lib/passkit-tier-ids');
 const { getGeofenceLocations } = require('../../lib/geofence');
+const { getReferralBackFields } = require('../../lib/referral');
+const { META_PENDING_REFERRAL } = require('../../lib/coupons');
 
 // config は handler に付与（下部参照）
 
@@ -172,7 +174,7 @@ async function deletePassKitMember(externalId) {
 }
 
 // PassKit会員証生成（タイムアウト付き）
-async function generatePassKitCard({ email, name, customerId, tierId }) {
+async function generatePassKitCard({ email, name, customerId, tierId, referrerId }) {
   const { token, baseUrl: passkitBaseUrl } = getPassKitAuth();
   const programId = process.env.PASSKIT_PROGRAM_ID;
   const passkitApiKeyId = (process.env.PASSKIT_API_KEY || '').trim();
@@ -205,11 +207,15 @@ async function generatePassKitCard({ email, name, customerId, tierId }) {
         externalId: customerId,
         points: 0,
         tierPoints: 0,
+        metaData: referrerId && referrerId !== customerId
+          ? { [META_PENDING_REFERRAL]: referrerId }
+          : {},
         passOverrides: {
           imageIds: {
             strip: '1KtkahvCl3rLRgLmxhxkaM',
           },
           locations: getGeofenceLocations(),
+          backFields: getReferralBackFields(customerId),
         },
       }),
       signal: controller.signal,
@@ -540,7 +546,8 @@ async function handler(req, res) {
     try {
       const customerEmail = session.customer_email || session.customer_details?.email;
       const customerName = session.customer_details?.name || 'VUELTA Member';
-      console.log(`[WEBHOOK] Customer: name=${customerName}, email=${customerEmail}, stripeId=${session.customer}`);
+      const referrerId = (session.client_reference_id || '').trim();
+      console.log(`[WEBHOOK] Customer: name=${customerName}, email=${customerEmail}, stripeId=${session.customer}${referrerId ? `, referrer=${referrerId}` : ''}`);
 
       if (!customerEmail) {
         console.error('[WEBHOOK] ERROR: No email found in session data');
@@ -570,6 +577,7 @@ async function handler(req, res) {
           name: customerName,
           customerId: session.customer || session.id,
           tierId: TIER_BASE,
+          referrerId,
         });
         console.log(`[PASSKIT] SUCCESS: ${walletUrl}`);
       } catch (err) {
