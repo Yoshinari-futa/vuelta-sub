@@ -16,8 +16,9 @@
  */
 
 const { getPassKitAuth } = require('../lib/passkit-auth');
-const { getReferralMetaData } = require('../lib/referral');
+const { getReferralMetaData, getReferralBackFields } = require('../lib/referral');
 const { getWalletPushTrigger } = require('../lib/wallet-push');
+const { getGeofenceLocation } = require('../lib/geofence');
 const { isMemberBirthdayMonth, getBirthDateFromMember, getJSTDate } = require('../lib/birthday');
 
 function parseListResponse(text) {
@@ -96,16 +97,21 @@ module.exports = async function handler(req, res) {
       }
 
       // 全員の memberInfo を再計算（誕生月切替・紹介リンクの最新化を兼ねる）
+      // 注意: PassKit の PUT は passOverrides 全体を上書きするため、
+      // locations / backFields も明示的に再送しないと wipe される。
       const push = getWalletPushTrigger();
+      const externalId = m.externalId || m.id;
       const updateBody = {
         id: m.id,
         programId: m.programId || programId,
         secondaryPoints: push.secondaryPoints,
         metaData: {
           ...(m.metaData || {}),
-          ...getReferralMetaData(m.externalId || m.id, { birthMonth }),
+          ...getReferralMetaData(externalId, { birthMonth }),
         },
         passOverrides: {
+          locations: [getGeofenceLocation()],
+          backFields: getReferralBackFields(externalId),
           relevantDate: push.relevantDate,
         },
       };
