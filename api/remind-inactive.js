@@ -213,9 +213,10 @@ module.exports = async function handler(req, res) {
         secondaryPoints: push.secondaryPoints,  // Wallet push 発火用（メタデータ変更だけでは push されない）
         metaData: {
           ...meta,
-          // テンプレート側のカスタム Back Field（key: memberInfo）に表示される。
-          // 値を書き換えることで Change Message "VUELTA: %@" が発火する。
-          memberInfo: messageWithStamp,
+          // テンプレート側のカスタム Back Field（uniqueName: meta.memberInfo）に表示される。
+          // PassKit はユーザー定義フィールドに meta. 接頭辞を自動付与するため、
+          // 会員 metaData 側もこの key 完全一致で書き込む必要がある。
+          'meta.memberInfo': messageWithStamp,
           reminderSent: now.toISOString(),
           reminderMessage: messageWithStamp,
         },
