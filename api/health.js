@@ -48,10 +48,10 @@ module.exports = async function handler(req, res) {
         const lr = await fetch(`${baseUrl}/members/member/list/${encodeURIComponent(programId)}`, {
           method: 'POST',
           headers: { Authorization: token, 'Content-Type': 'application/json' },
-          body: JSON.stringify({ filters: { limit: 3 } }),
+          body: JSON.stringify({ filters: { limit: 50 } }),
         });
         const lt = await lr.text();
-        listTest = { status: lr.status, body: lt.substring(0, 800) };
+        listTest = { status: lr.status, body: lt.substring(0, 20000) };
       }
 
       // 3. points/set エンドポイント存在確認（空リクエスト）
