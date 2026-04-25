@@ -213,10 +213,10 @@ module.exports = async function handler(req, res) {
         secondaryPoints: push.secondaryPoints,  // Wallet push 発火用（メタデータ変更だけでは push されない）
         metaData: {
           ...meta,
-          // テンプレート側のカスタム Back Field（uniqueName: meta.memberInfo）に表示される。
-          // PassKit はユーザー定義フィールドに meta. 接頭辞を自動付与するため、
-          // 会員 metaData 側もこの key 完全一致で書き込む必要がある。
-          'meta.memberInfo': messageWithStamp,
+          // テンプレート側のカスタム Back Field（uniqueName: meta.memberInfo, label: Information）
+          // に表示される。PassKit の命名規則上、会員 metaData では "meta." プレフィックスを
+          // 剥がした "memberInfo" がキーになる（DevTools Network 調査で判明）。
+          memberInfo: messageWithStamp,
           reminderSent: now.toISOString(),
           reminderMessage: messageWithStamp,
         },
