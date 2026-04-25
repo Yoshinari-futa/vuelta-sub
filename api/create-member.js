@@ -7,6 +7,10 @@
 const nodemailer = require('nodemailer');
 const { getPassKitAuth } = require('../lib/passkit-auth');
 const { TIER_BASE } = require('../lib/passkit-tier-ids');
+const { getGeofenceLocations } = require('../lib/geofence');
+const { getReferralBackFields, getReferralMetaData } = require('../lib/referral');
+const { getWalletPushTrigger } = require('../lib/wallet-push');
+const { toPassKitDateOfBirth } = require('../lib/birthday');
 
 module.exports = async function handler(req, res) {
   if (req.method !== 'POST') {
@@ -14,7 +18,7 @@ module.exports = async function handler(req, res) {
   }
 
   // 簡易認証
-  const { name, email, externalId, secret } = req.body || {};
+  const { name, email, externalId, birthMonth, secret } = req.body || {};
   if (secret !== 'vuelta2026-member') {
     return res.status(401).json({ error: 'Unauthorized' });
   }
@@ -23,7 +27,7 @@ module.exports = async function handler(req, res) {
   }
 
   const extId = externalId || email.replace(/[@.]/g, '-');
-  console.log(`[CREATE-MEMBER] name=${name}, email=${email}, extId=${extId}`);
+  console.log(`[CREATE-MEMBER] name=${name}, email=${email}, extId=${extId}${birthMonth ? `, birthMonth=${birthMonth}` : ''}`);
 
   // --- PassKit メンバー作成 ---
   let walletUrl = null;
@@ -38,33 +42,35 @@ module.exports = async function handler(req, res) {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 8000);
 
+    const dob = toPassKitDateOfBirth(birthMonth);
     const response = await fetch(apiUrl, {
       method: 'POST',
       headers: { 'Authorization': token, 'Content-Type': 'application/json' },
       body: JSON.stringify({
         programId,
         tierId,
-        person: { displayName: name, emailAddress: email, forenames: name.split(' ')[0], surname: name.split(' ').slice(1).join(' ') || name },
+        person: {
+          displayName: name,
+          emailAddress: email,
+          forenames: name.split(' ')[0],
+          surname: name.split(' ').slice(1).join(' ') || name,
+          ...(dob ? { dateOfBirth: dob } : {}),
+        },
         externalId: extId,
         points: 0,
         tierPoints: 0,
+        secondaryPoints: Math.floor(Date.now() / 1000),
+        metaData: {
+          ...getReferralMetaData(extId, { birthMonth }),
+          ...(birthMonth ? { birthMonth } : {}),
+        },
         passOverrides: {
           imageIds: {
             strip: '1KtkahvCl3rLRgLmxhxkaM',
           },
-          // ジオフェンス（VUELTA 近くでロック画面提案）を最初から注入。
-          // 後から /set-geofence を叩く必要を無くすため。
-          // 座標・文言は env で上書き可能。
-          locations: [
-            {
-              latitude: parseFloat(process.env.VUELTA_GEOFENCE_LAT || '') || 34.3893066,
-              longitude: parseFloat(process.env.VUELTA_GEOFENCE_LNG || '') || 132.4541823,
-              relevantText:
-                (process.env.VUELTA_GEOFENCE_TEXT || "You're near VUELTA. How about a drink tonight?").trim(),
-              altitude: 0,
-              radius: 300,
-            },
-          ],
+          locations: getGeofenceLocations(),
+          backFields: getReferralBackFields(extId),
+          relevantDate: new Date().toISOString(),
         },
       }),
       signal: controller.signal,

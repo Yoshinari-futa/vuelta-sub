@@ -20,6 +20,10 @@
     {
       "path": "/customer-receipt-oku",
       "schedule": "0 22 * * *"
+    },
+    {
+      "path": "/birthday-push",
+      "schedule": "0 0 1 * *"
     }
   ],
   "builds": [
@@ -104,6 +108,22 @@
     {
       "src": "/customer-receipt-oku",
       "dest": "/api/customer-receipt-oku.js"
+    },
+    {
+      "src": "/use-coupon",
+      "dest": "/api/use-coupon.js"
+    },
+    {
+      "src": "/r/(?<id>[^/]+)",
+      "dest": "/api/referral-redirect.js?id=$id"
+    },
+    {
+      "src": "/share/(?<id>[^/]+)",
+      "dest": "/api/share-page.js?id=$id"
+    },
+    {
+      "src": "/birthday-push",
+      "dest": "/api/birthday-push.js"
     }
   ]
 }

@@ -10,8 +10,22 @@
 const parseVisitCount = require('../lib/parse-visit-count');
 const { getPassKitAuth } = require('../lib/passkit-auth');
 const { TIER_BASE, TIER_SILVER, TIER_GOLD, TIER_BLACK, TIER_RAINBOW } = require('../lib/passkit-tier-ids');
+const { getGeofenceLocations } = require('../lib/geofence');
+const { getReferralBackFields, getReferralMetaData } = require('../lib/referral');
+const { getWalletPushTrigger } = require('../lib/wallet-push');
+const { isMemberBirthdayMonth, getBirthDateFromMember, getJSTDate } = require('../lib/birthday');
 
-const SCAN_API_VERSION = '2026-04-10-v13-geofence';
+const META_BIRTHDAY_GRANTED_YEAR = 'birthdayCouponGrantedYear';
+const {
+  META_FOOD_COUPONS,
+  META_PENDING_REFERRAL,
+  readFoodCoupons,
+  readPendingReferral,
+  adjustFoodCoupons,
+  findMemberByExternalId,
+} = require('../lib/coupons');
+
+const SCAN_API_VERSION = '2026-04-24-v14-referral';
 
 // ── ティア判定 ──
 // Base(白): 0〜3, Gold(金): 4〜15, Silver(銀): 16〜50, Black(黒): 51〜99, Rainbow(虹): 100+
@@ -242,14 +256,20 @@ module.exports = async function handler(req, res) {
     }
 
     // 成功時の共通レスポンス
-    const successResponse = (via) => ({
+    const successResponse = (via, extra = {}) => ({
       success: true,
       member: displayName,
+      memberId: member.id,
       visits: newPoints,
       previousVisits: currentPoints,
       tier: newTier.label,
       tierId: newTier.id,
       tierChanged,
+      foodCoupons: extra.foodCoupons != null ? extra.foodCoupons : readFoodCoupons(member),
+      referralGranted: !!extra.referralGranted,
+      referrerName: extra.referrerName || null,
+      isBirthdayMonth: !!extra.isBirthdayMonth,
+      birthdayBonusGranted: !!extra.birthdayBonusGranted,
       message: tierChanged
         ? `${displayName}さん ${newPoints}回目の来店！🎉 ${newTier.label}ランクに昇格！`
         : `${displayName}さん ${newPoints}回目の来店！`,
@@ -261,27 +281,67 @@ module.exports = async function handler(req, res) {
     // ── Step 2: ポイント更新 + ティア変更（3段階フォールバック） ──
     const results = {};
 
-    // 2a: PUT /members/member（ポイント＋ティア＋ジオフェンス＋最終来店日を同時更新）
+    // 紹介成立判定（metaData.pendingReferralReward が入った状態で初めて来店スキャン）
+    const pendingRefId = readPendingReferral(member);
+    let referrerMember = null;
+    let grantedFoodCoupons = readFoodCoupons(member);
+
+    // 誕生月判定（来店スキャン時に年 1 回だけフード1品無料を自動付与）
+    // person.dateOfBirth（Portal の Personal Info Birthday）→ metaData.birthMonth の順で参照
+    const memberBd = getBirthDateFromMember(member);
+    const memberBirthMonth = memberBd ? `${memberBd.month}/${memberBd.day}` : '';
+    const memberIsBirthdayMonth = isMemberBirthdayMonth(member);
+    const currentYearJST = String(getJSTDate().year);
+    const lastBirthdayGrantYear = String(member.metaData?.[META_BIRTHDAY_GRANTED_YEAR] || '');
+    const birthdayBonusGranted =
+      memberIsBirthdayMonth && lastBirthdayGrantYear !== currentYearJST;
+
+    const nextMetaData = {
+      ...(member.metaData || {}),
+      // Information 欄をリマインド後も最新の状態に戻す（誕生月なら誕生日メッセージに切替）
+      ...getReferralMetaData(member.externalId || member.id, { birthMonth: memberBirthMonth }),
+      lastVisit: new Date().toISOString(),
+      reminderSent: '',  // スキャン時にリマインドフラグをリセット
+    };
+
+    if (birthdayBonusGranted) {
+      grantedFoodCoupons += 1;
+      nextMetaData[META_FOOD_COUPONS] = String(grantedFoodCoupons);
+      nextMetaData[META_BIRTHDAY_GRANTED_YEAR] = currentYearJST;
+      console.log(`[SCAN] Birthday bonus: ${displayName} +1 food coupon (year=${currentYearJST}, birthMonth=${memberBirthMonth})`);
+    }
+
+    if (pendingRefId && pendingRefId !== (member.externalId || member.id)) {
+      referrerMember = await findMemberByExternalId({
+        token,
+        baseUrl,
+        programId: effectiveProgramId,
+        externalId: pendingRefId,
+      });
+      if (referrerMember) {
+        grantedFoodCoupons += 1;
+        nextMetaData[META_FOOD_COUPONS] = String(grantedFoodCoupons);
+        nextMetaData[META_PENDING_REFERRAL] = '';
+        console.log(`[SCAN] Referral grant: ${displayName} +1 food coupon (referrer=${pendingRefId})`);
+      } else {
+        console.warn(`[SCAN] Referrer not found: externalId=${pendingRefId}. Clearing pending flag.`);
+        nextMetaData[META_PENDING_REFERRAL] = '';
+      }
+    }
+
+    // 2a: PUT /members/member（ポイント＋ティア＋ジオフェンス＋最終来店日＋紹介報酬を同時更新）
+    const push = getWalletPushTrigger();
     const updateBody = {
       id: member.id,
       programId: effectiveProgramId,
       tierId: newTier.id,
       points: newPoints,
-      metaData: {
-        ...(member.metaData || {}),
-        lastVisit: new Date().toISOString(),
-        reminderSent: '',  // スキャン時にリマインドフラグをリセット
-      },
+      secondaryPoints: push.secondaryPoints,  // Wallet push 発火用
+      metaData: nextMetaData,
       passOverrides: {
-        locations: [
-          {
-            latitude: 34.3893066,
-            longitude: 132.4541823,
-            relevantText: "You're near VUELTA. How about a drink tonight?",
-            altitude: 0,
-            radius: 300,
-          },
-        ],
+        locations: getGeofenceLocations(),
+        backFields: getReferralBackFields(member.externalId || member.id),
+        relevantDate: push.relevantDate,  // Wallet push 発火用
       },
     };
     try {
@@ -294,7 +354,82 @@ module.exports = async function handler(req, res) {
       results.updateMember = { status: r.status, ok: r.ok, body: t.substring(0, 300) };
       console.log(`[SCAN] updateMember: ${r.status} ${t.substring(0, 200)}`);
       if (r.ok) {
-        return res.status(200).json(successResponse('updateMember'));
+        // 誕生日ボーナス成立時に Slack 通知
+        if (birthdayBonusGranted) {
+          const slackUrl = process.env.SLACK_WEBHOOK_URL;
+          if (slackUrl) {
+            try {
+              await fetch(slackUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  blocks: [
+                    { type: 'header', text: { type: 'plain_text', text: '🎂 誕生日特典 進呈！', emoji: true } },
+                    {
+                      type: 'section',
+                      text: {
+                        type: 'mrkdwn',
+                        text: `*${displayName}* さん（誕生月: ${memberBirthMonth}）が来店\nフード 1 品無料クーポン +1 枚`,
+                      },
+                    },
+                  ],
+                }),
+              });
+            } catch (slackErr) {
+              console.error(`[SCAN] Birthday Slack notify failed: ${slackErr.message}`);
+            }
+          }
+        }
+        // 紹介者側にもフードクーポンを +1（成立時のみ）
+        let referrerName = null;
+        if (referrerMember) {
+          const refResult = await adjustFoodCoupons({
+            token,
+            baseUrl,
+            member: referrerMember,
+            delta: 1,
+          });
+          referrerName =
+            referrerMember.person?.displayName ||
+            [referrerMember.person?.forenames, referrerMember.person?.surname].filter(Boolean).join(' ') ||
+            'Member';
+          console.log(`[SCAN] Referrer +1 coupon: ${referrerName} -> ${refResult.ok ? 'OK' : 'FAIL'}`);
+
+          // Slack 通知
+          const slackUrl = process.env.SLACK_WEBHOOK_URL;
+          if (slackUrl) {
+            try {
+              await fetch(slackUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  blocks: [
+                    { type: 'header', text: { type: 'plain_text', text: '🍽️ 紹介成立！', emoji: true } },
+                    {
+                      type: 'section',
+                      text: {
+                        type: 'mrkdwn',
+                        text: `*${referrerName}* さんの紹介で *${displayName}* さんが初来店\n両者にフード 1 品無料クーポンを付与しました`,
+                      },
+                    },
+                  ],
+                }),
+              });
+            } catch (slackErr) {
+              console.error(`[SCAN] Referral Slack notify failed: ${slackErr.message}`);
+            }
+          }
+        }
+
+        return res.status(200).json(
+          successResponse('updateMember', {
+            foodCoupons: grantedFoodCoupons,
+            referralGranted: !!referrerMember,
+            referrerName,
+            isBirthdayMonth: memberIsBirthdayMonth,
+            birthdayBonusGranted,
+          })
+        );
       }
     } catch (e) {
       results.updateMember = { error: e.message };

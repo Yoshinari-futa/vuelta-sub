@@ -9,6 +9,11 @@ const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
 const nodemailer = require('nodemailer');
 const { getPassKitAuth } = require('../../lib/passkit-auth');
 const { TIER_BASE } = require('../../lib/passkit-tier-ids');
+const { getGeofenceLocations } = require('../../lib/geofence');
+const { getReferralBackFields, getReferralMetaData } = require('../../lib/referral');
+const { META_PENDING_REFERRAL } = require('../../lib/coupons');
+const { getWalletPushTrigger } = require('../../lib/wallet-push');
+const { toPassKitDateOfBirth } = require('../../lib/birthday');
 
 // config は handler に付与（下部参照）
 
@@ -81,6 +86,9 @@ function getTransporter() {
   return nodemailer.createTransport({
     service: process.env.EMAIL_SERVICE || 'gmail',
     auth: { user, pass },
+    connectionTimeout: 10000,
+    greetingTimeout: 10000,
+    socketTimeout: 10000,
   });
 }
 
@@ -168,7 +176,7 @@ async function deletePassKitMember(externalId) {
 }
 
 // PassKit会員証生成（タイムアウト付き）
-async function generatePassKitCard({ email, name, customerId, tierId }) {
+async function generatePassKitCard({ email, name, customerId, tierId, referrerId, birthMonth }) {
   const { token, baseUrl: passkitBaseUrl } = getPassKitAuth();
   const programId = process.env.PASSKIT_PROGRAM_ID;
   const passkitApiKeyId = (process.env.PASSKIT_API_KEY || '').trim();
@@ -185,6 +193,8 @@ async function generatePassKitCard({ email, name, customerId, tierId }) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 5000);
 
+  const push = getWalletPushTrigger();
+  const dob = toPassKitDateOfBirth(birthMonth);  // Stripe の "3/15" を {year:0, month:3, day:15} に
   try {
     const response = await fetch(apiUrl, {
       method: 'POST',
@@ -197,14 +207,26 @@ async function generatePassKitCard({ email, name, customerId, tierId }) {
           emailAddress: email,
           forenames: name.split(' ')[0],
           surname: name.split(' ').slice(1).join(' ') || name,
+          ...(dob ? { dateOfBirth: dob } : {}),
         },
         externalId: customerId,
         points: 0,
         tierPoints: 0,
+        secondaryPoints: push.secondaryPoints,
+        metaData: {
+          ...getReferralMetaData(customerId, { birthMonth }),
+          ...(birthMonth ? { birthMonth } : {}),
+          ...(referrerId && referrerId !== customerId
+            ? { [META_PENDING_REFERRAL]: referrerId }
+            : {}),
+        },
         passOverrides: {
           imageIds: {
             strip: '1KtkahvCl3rLRgLmxhxkaM',
           },
+          locations: getGeofenceLocations(),
+          backFields: getReferralBackFields(customerId),
+          relevantDate: push.relevantDate,
         },
       }),
       signal: controller.signal,
@@ -518,8 +540,9 @@ async function handler(req, res) {
 
   console.log(`[WEBHOOK] Event received: ${event.type} (${event.id})`);
 
-  // ===== Stripeに即座に200を返す（タイムアウト・リトライ防止）=====
-  res.json({ received: true });
+  // 注意: Vercel のサーバーレス関数は res.json() 後に処理が打ち切られる場合がある。
+  // メール送信・PassKit 生成・Slack 通知をすべて完了させてから 200 を返す。
+  // Stripe は webhook 応答を 30 秒待つので、各処理にタイムアウトを設けて時間内に収める。
 
   // ===== 新規決済完了 =====
   if (event.type === 'checkout.session.completed') {
@@ -534,11 +557,14 @@ async function handler(req, res) {
     try {
       const customerEmail = session.customer_email || session.customer_details?.email;
       const customerName = session.customer_details?.name || 'VUELTA Member';
-      console.log(`[WEBHOOK] Customer: name=${customerName}, email=${customerEmail}, stripeId=${session.customer}`);
+      const referrerId = (session.client_reference_id || '').trim();
+      const birthMonthField = customFields.find((f) => f.key === 'birth_month');
+      const birthMonth = (birthMonthField?.value || '').trim();
+      console.log(`[WEBHOOK] Customer: name=${customerName}, email=${customerEmail}, stripeId=${session.customer}${referrerId ? `, referrer=${referrerId}` : ''}${birthMonth ? `, birthMonth=${birthMonth}` : ''}`);
 
       if (!customerEmail) {
         console.error('[WEBHOOK] ERROR: No email found in session data');
-        return;
+        return res.json({ received: true, warning: 'no_email' });
       }
 
       const transporter = getTransporter();
@@ -564,6 +590,8 @@ async function handler(req, res) {
           name: customerName,
           customerId: session.customer || session.id,
           tierId: TIER_BASE,
+          referrerId,
+          birthMonth,
         });
         console.log(`[PASSKIT] SUCCESS: ${walletUrl}`);
       } catch (err) {
@@ -656,6 +684,9 @@ async function handler(req, res) {
       console.error(`[WEBHOOK] Cancellation processing error: ${err.message}`);
     }
   }
+
+  // すべての処理が完了してから Stripe へ 200 応答（Vercel が早期に関数を打ち切らないよう最後に）
+  res.json({ received: true });
 }
 
 // Vercelではbodyのパースを無効にする（Stripe署名検証のため）

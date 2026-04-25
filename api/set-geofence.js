@@ -10,10 +10,10 @@
 
 const { getPassKitAuth } = require('../lib/passkit-auth');
 const { TIER_BASE, TIER_SILVER, TIER_GOLD, TIER_BLACK, TIER_RAINBOW } = require('../lib/passkit-tier-ids');
-
-const DEFAULT_LAT = 34.3893066;
-const DEFAULT_LNG = 132.4541823;
-const DEFAULT_RELEVANT_TEXT = "You're near VUELTA. How about a drink tonight?";
+const { getGeofenceLocation } = require('../lib/geofence');
+const { getReferralBackFields, getReferralMetaData } = require('../lib/referral');
+const { getWalletPushTrigger } = require('../lib/wallet-push');
+const { getBirthDateFromMember } = require('../lib/birthday');
 
 const ALL_TIERS = [TIER_BASE, TIER_GOLD, TIER_SILVER, TIER_BLACK, TIER_RAINBOW];
 
@@ -35,17 +35,8 @@ module.exports = async function handler(req, res) {
       return res.status(500).json({ error: 'PASSKIT_PROGRAM_ID required' });
     }
 
-    const lat = parseFloat(process.env.VUELTA_GEOFENCE_LAT || '') || DEFAULT_LAT;
-    const lng = parseFloat(process.env.VUELTA_GEOFENCE_LNG || '') || DEFAULT_LNG;
-    const relevantText = (process.env.VUELTA_GEOFENCE_TEXT || DEFAULT_RELEVANT_TEXT).trim();
-
-    const locationEntry = {
-      latitude: lat,
-      longitude: lng,
-      relevantText,
-      altitude: 0,
-      radius: 300,
-    };
+    const locationEntry = getGeofenceLocation();
+    const { lat, lon: lng, lockScreenMessage: relevantText } = locationEntry;
 
     let token, baseUrl;
     try {
@@ -99,11 +90,22 @@ module.exports = async function handler(req, res) {
 
       for (const m of members) {
         if (!m.id) continue;
+        const push = getWalletPushTrigger();
+        const bd = getBirthDateFromMember(m);
+        const memberBirthMonth = bd ? `${bd.month}/${bd.day}` : '';
         const updateBody = {
           id: m.id,
           programId: m.programId || programId,
+          secondaryPoints: push.secondaryPoints,  // Wallet push 発火用（値を変えるだけ）
+          metaData: {
+            ...(m.metaData || {}),
+            // Information 欄を紹介リンクに差し替え（誕生月なら誕生日メッセージ）
+            ...getReferralMetaData(m.externalId || m.id, { birthMonth: memberBirthMonth }),
+          },
           passOverrides: {
             locations: [locationEntry],
+            backFields: getReferralBackFields(m.externalId || m.id),
+            relevantDate: push.relevantDate,  // Wallet push 発火用
           },
         };
 
