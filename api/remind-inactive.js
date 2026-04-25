@@ -4,10 +4,10 @@
  *
  * 仕組み：
  *   PassKit Designer 側で 全5ティア（Base/Gold/Silver/Black/Rainbow）の
- *   Information フィールド（フィールドキー: `universal.info`）に
+ *   Back Fields にカスタムフィールド（フィールドキー: `memberInfo`）を追加し、
  *   Apple Wallet の Change Message を `VUELTA: %@` でセット済み。
  *
- *   このエンドポイントは該当メンバーの metaData["universal.info"] を
+ *   このエンドポイントは該当メンバーの metaData["memberInfo"] を
  *   前回と違う文字列に書き換える。
  *   → PassKit が Apple APNs 経由で自動プッシュ
  *   → ロック画面に「VUELTA: We miss you! ...」が表示される。
@@ -188,11 +188,11 @@ module.exports = async function handler(req, res) {
 
       // パス更新 → Apple Wallet がプッシュ通知を自動送信
       //
-      // テンプレート側（全5ティア）の Information フィールド
-      // （フィールドキー: universal.info）には、あらかじめ PassKit Designer で
-      // Apple Wallet の Change Message = "VUELTA: %@" をセット済み。
+      // テンプレート側（全5ティア）の Back Fields に追加したカスタムフィールド
+      // （フィールドキー: memberInfo, ラベル: Information）には、あらかじめ
+      // PassKit Designer で Apple Wallet の Change Message = "VUELTA: %@" をセット済み。
       //
-      // ここでは metaData["universal.info"] を前回値と異なる文字列に
+      // ここでは metaData["memberInfo"] を前回値と異なる文字列に
       // 書き換えるだけでよい。
       //
       // ※ changeMessage は前回値との「差分」が条件。同じ文字列を再送信すると
@@ -213,9 +213,10 @@ module.exports = async function handler(req, res) {
         secondaryPoints: push.secondaryPoints,  // Wallet push 発火用（メタデータ変更だけでは push されない）
         metaData: {
           ...meta,
-          // PassKit テンプレートで定義済みの Information フィールド。
-          // このキーの値を書き換えることで Change Message "VUELTA: %@" が発火する。
-          'universal.info': messageWithStamp,
+          // テンプレート側のカスタム Back Field（uniqueName: meta.memberInfo）に表示される。
+          // PassKit はユーザー定義フィールドに meta. 接頭辞を自動付与するため、
+          // 会員 metaData 側もこの key 完全一致で書き込む必要がある。
+          'meta.memberInfo': messageWithStamp,
           reminderSent: now.toISOString(),
           reminderMessage: messageWithStamp,
         },
