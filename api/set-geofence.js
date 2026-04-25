@@ -13,6 +13,7 @@ const { TIER_BASE, TIER_SILVER, TIER_GOLD, TIER_BLACK, TIER_RAINBOW } = require(
 const { getGeofenceLocation } = require('../lib/geofence');
 const { getReferralBackFields, getReferralMetaData } = require('../lib/referral');
 const { getWalletPushTrigger } = require('../lib/wallet-push');
+const { getBirthDateFromMember } = require('../lib/birthday');
 
 const ALL_TIERS = [TIER_BASE, TIER_GOLD, TIER_SILVER, TIER_BLACK, TIER_RAINBOW];
 
@@ -90,7 +91,8 @@ module.exports = async function handler(req, res) {
       for (const m of members) {
         if (!m.id) continue;
         const push = getWalletPushTrigger();
-        const memberBirthMonth = m.metaData?.birthMonth || '';
+        const bd = getBirthDateFromMember(m);
+        const memberBirthMonth = bd ? `${bd.month}/${bd.day}` : '';
         const updateBody = {
           id: m.id,
           programId: m.programId || programId,

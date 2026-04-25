@@ -13,6 +13,7 @@ const { getGeofenceLocations } = require('../../lib/geofence');
 const { getReferralBackFields, getReferralMetaData } = require('../../lib/referral');
 const { META_PENDING_REFERRAL } = require('../../lib/coupons');
 const { getWalletPushTrigger } = require('../../lib/wallet-push');
+const { toPassKitDateOfBirth } = require('../../lib/birthday');
 
 // config は handler に付与（下部参照）
 
@@ -193,6 +194,7 @@ async function generatePassKitCard({ email, name, customerId, tierId, referrerId
   const timeout = setTimeout(() => controller.abort(), 5000);
 
   const push = getWalletPushTrigger();
+  const dob = toPassKitDateOfBirth(birthMonth);  // Stripe の "3/15" を {year:0, month:3, day:15} に
   try {
     const response = await fetch(apiUrl, {
       method: 'POST',
@@ -205,6 +207,7 @@ async function generatePassKitCard({ email, name, customerId, tierId, referrerId
           emailAddress: email,
           forenames: name.split(' ')[0],
           surname: name.split(' ').slice(1).join(' ') || name,
+          ...(dob ? { dateOfBirth: dob } : {}),
         },
         externalId: customerId,
         points: 0,

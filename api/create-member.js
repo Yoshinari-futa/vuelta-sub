@@ -10,6 +10,7 @@ const { TIER_BASE } = require('../lib/passkit-tier-ids');
 const { getGeofenceLocations } = require('../lib/geofence');
 const { getReferralBackFields, getReferralMetaData } = require('../lib/referral');
 const { getWalletPushTrigger } = require('../lib/wallet-push');
+const { toPassKitDateOfBirth } = require('../lib/birthday');
 
 module.exports = async function handler(req, res) {
   if (req.method !== 'POST') {
@@ -41,13 +42,20 @@ module.exports = async function handler(req, res) {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 8000);
 
+    const dob = toPassKitDateOfBirth(birthMonth);
     const response = await fetch(apiUrl, {
       method: 'POST',
       headers: { 'Authorization': token, 'Content-Type': 'application/json' },
       body: JSON.stringify({
         programId,
         tierId,
-        person: { displayName: name, emailAddress: email, forenames: name.split(' ')[0], surname: name.split(' ').slice(1).join(' ') || name },
+        person: {
+          displayName: name,
+          emailAddress: email,
+          forenames: name.split(' ')[0],
+          surname: name.split(' ').slice(1).join(' ') || name,
+          ...(dob ? { dateOfBirth: dob } : {}),
+        },
         externalId: extId,
         points: 0,
         tierPoints: 0,

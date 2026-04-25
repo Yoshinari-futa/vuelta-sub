@@ -13,7 +13,7 @@ const { TIER_BASE, TIER_SILVER, TIER_GOLD, TIER_BLACK, TIER_RAINBOW } = require(
 const { getGeofenceLocations } = require('../lib/geofence');
 const { getReferralBackFields, getReferralMetaData } = require('../lib/referral');
 const { getWalletPushTrigger } = require('../lib/wallet-push');
-const { isBirthdayMonth, getJSTDate } = require('../lib/birthday');
+const { isMemberBirthdayMonth, getBirthDateFromMember, getJSTDate } = require('../lib/birthday');
 
 const META_BIRTHDAY_GRANTED_YEAR = 'birthdayCouponGrantedYear';
 const {
@@ -296,8 +296,10 @@ module.exports = async function handler(req, res) {
     let grantedFoodCoupons = readFoodCoupons(member);
 
     // 誕生月判定（来店スキャン時に年 1 回だけフード1品無料を自動付与）
-    const memberBirthMonth = member.metaData?.birthMonth || '';
-    const memberIsBirthdayMonth = isBirthdayMonth(memberBirthMonth);
+    // person.dateOfBirth（Portal の Personal Info Birthday）→ metaData.birthMonth の順で参照
+    const memberBd = getBirthDateFromMember(member);
+    const memberBirthMonth = memberBd ? `${memberBd.month}/${memberBd.day}` : '';
+    const memberIsBirthdayMonth = isMemberBirthdayMonth(member);
     const currentYearJST = String(getJSTDate().year);
     const lastBirthdayGrantYear = String(member.metaData?.[META_BIRTHDAY_GRANTED_YEAR] || '');
     const birthdayBonusGranted =
