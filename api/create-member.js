@@ -17,7 +17,7 @@ module.exports = async function handler(req, res) {
   }
 
   // 簡易認証
-  const { name, email, externalId, secret } = req.body || {};
+  const { name, email, externalId, birthMonth, secret } = req.body || {};
   if (secret !== 'vuelta2026-member') {
     return res.status(401).json({ error: 'Unauthorized' });
   }
@@ -26,7 +26,7 @@ module.exports = async function handler(req, res) {
   }
 
   const extId = externalId || email.replace(/[@.]/g, '-');
-  console.log(`[CREATE-MEMBER] name=${name}, email=${email}, extId=${extId}`);
+  console.log(`[CREATE-MEMBER] name=${name}, email=${email}, extId=${extId}${birthMonth ? `, birthMonth=${birthMonth}` : ''}`);
 
   // --- PassKit メンバー作成 ---
   let walletUrl = null;
@@ -52,7 +52,10 @@ module.exports = async function handler(req, res) {
         points: 0,
         tierPoints: 0,
         secondaryPoints: Math.floor(Date.now() / 1000),
-        metaData: getReferralMetaData(extId),
+        metaData: {
+          ...getReferralMetaData(extId, { birthMonth }),
+          ...(birthMonth ? { birthMonth } : {}),
+        },
         passOverrides: {
           imageIds: {
             strip: '1KtkahvCl3rLRgLmxhxkaM',
