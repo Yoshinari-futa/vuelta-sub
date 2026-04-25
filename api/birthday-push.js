@@ -18,7 +18,7 @@
 const { getPassKitAuth } = require('../lib/passkit-auth');
 const { getReferralMetaData } = require('../lib/referral');
 const { getWalletPushTrigger } = require('../lib/wallet-push');
-const { isBirthdayMonth, getJSTDate } = require('../lib/birthday');
+const { isMemberBirthdayMonth, getBirthDateFromMember, getJSTDate } = require('../lib/birthday');
 
 function parseListResponse(text) {
   const t = (text || '').trim();
@@ -83,8 +83,9 @@ module.exports = async function handler(req, res) {
 
     for (const m of members) {
       if (!m.id) continue;
-      const birthMonth = m.metaData?.birthMonth || '';
-      const isBday = isBirthdayMonth(birthMonth);
+      const bd = getBirthDateFromMember(m);
+      const birthMonth = bd ? `${bd.month}/${bd.day}` : '';
+      const isBday = isMemberBirthdayMonth(m);
       if (isBday) {
         birthdayCount++;
         const name =
