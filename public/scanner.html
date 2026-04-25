@@ -17,29 +17,6 @@
     text-transform: uppercase; color: #ccc;
   }
 
-  /* PIN */
-  .pin-overlay {
-    position: fixed; inset: 0; z-index: 100;
-    background: #0a0a0a; display: flex; flex-direction: column;
-    align-items: center; justify-content: center; gap: 20px;
-  }
-  .pin-overlay.hidden { display: none; }
-  .pin-overlay h2 { font-size: 13px; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase; color: #999; }
-  .pin-input {
-    width: 200px; padding: 14px 16px; border-radius: 12px;
-    border: 1px solid #333; background: #1a1a1a; color: #fff;
-    font-size: 20px; text-align: center; letter-spacing: 0.2em;
-    -webkit-text-security: disc;
-  }
-  .pin-input:focus { outline: none; border-color: #2d5a3d; }
-  .pin-btn {
-    padding: 12px 40px; border-radius: 50px; border: none;
-    background: #2d5a3d; color: #fff; font-size: 13px;
-    font-weight: 600; letter-spacing: 0.06em; cursor: pointer;
-  }
-  .pin-btn:active { background: #1e3d29; }
-  .pin-error { color: #e74c3c; font-size: 12px; height: 16px; }
-
   /* Camera */
   .camera-wrap { width: 100%; max-width: 400px; padding: 0 16px; position: relative; }
   .camera-box {
@@ -182,14 +159,6 @@
 </head>
 <body>
 
-<!-- PIN -->
-<div class="pin-overlay" id="pinOverlay">
-  <h2>STAFF PIN</h2>
-  <input type="password" class="pin-input" id="pinInput" inputmode="numeric" maxlength="12" placeholder="••••">
-  <button class="pin-btn" id="pinBtn">ENTER</button>
-  <div class="pin-error" id="pinError"></div>
-</div>
-
 <!-- Main -->
 <div class="header"><h1>VUELTA — Scan</h1></div>
 
@@ -238,10 +207,8 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html5-qrcode/2.3.8/html5-qrcode.min.js"></script>
 
 <script>
-  const PIN_KEY = 'vuelta_scan_pin';
   /** auto | lib | native — 上書き。PC は PDF417 が弱いので通常 lib */
   const SCAN_MODE_KEY = 'vuelta_scan_engine';
-  let staffPin = sessionStorage.getItem(PIN_KEY) || '';
   let scanning = false;
   let scannerMode = ''; // 'native' or 'lib'
   let html5QrCode = null;
@@ -252,64 +219,7 @@
 
   function dbg(msg) { debugEl.textContent = msg; console.log('[SCANNER] ' + msg); }
 
-  // ── PIN ──
-  const pinOverlay = document.getElementById('pinOverlay');
-  const pinInput = document.getElementById('pinInput');
-  const pinBtn = document.getElementById('pinBtn');
-  const pinError = document.getElementById('pinError');
-
-  const urlPin = new URLSearchParams(window.location.search).get('pin');
-  if (urlPin) { staffPin = urlPin; sessionStorage.setItem(PIN_KEY, staffPin); }
-
-  if (staffPin) {
-    fetch('/scan?secret=' + encodeURIComponent(staffPin))
-      .then(async (r) => {
-        const t = await r.text();
-        try {
-          return t ? JSON.parse(t) : {};
-        } catch {
-          return {};
-        }
-      })
-      .then(d => {
-        if (d.valid) { pinOverlay.classList.add('hidden'); onAuth(); }
-        else { sessionStorage.removeItem(PIN_KEY); staffPin = ''; }
-      })
-      .catch(() => { sessionStorage.removeItem(PIN_KEY); staffPin = ''; });
-  }
-
-  pinInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') submitPin(); });
-  pinBtn.addEventListener('click', submitPin);
-
-  async function submitPin() {
-    const val = pinInput.value.trim();
-    if (!val) { pinError.textContent = 'PINを入力してください'; return; }
-    pinBtn.disabled = true; pinBtn.textContent = '...';
-    try {
-      const resp = await fetch('/scan?secret=' + encodeURIComponent(val));
-      const raw = await resp.text();
-      let data = {};
-      try {
-        data = raw ? JSON.parse(raw) : {};
-      } catch {
-        pinError.textContent = '応答が不正です';
-        pinBtn.disabled = false; pinBtn.textContent = 'ENTER';
-        return;
-      }
-      if (resp.ok && data.valid) {
-        staffPin = val;
-        sessionStorage.setItem(PIN_KEY, staffPin);
-        pinOverlay.classList.add('hidden');
-        onAuth();
-      } else {
-        pinError.textContent = 'PINが正しくありません';
-        pinInput.value = ''; pinInput.focus();
-      }
-    } catch (err) { pinError.textContent = '通信エラー'; }
-    pinBtn.disabled = false; pinBtn.textContent = 'ENTER';
-  }
-
-  function onAuth() {
+  function initScanner() {
     document.getElementById('manualWrap').classList.add('show');
     document.getElementById('modeRow').classList.add('show');
     // iOS Safari では最初のユーザー操作時に AudioContext を作らないと音が鳴らない
@@ -416,8 +326,10 @@
     if (pref === 'native' && hasNative) useLib = false;
     else if (pref === 'lib') useLib = true;
     else if (pref === 'auto') {
-      // PC の Chrome は BarcodeDetector でも PDF417（スマホ画面撮影）がほぼ読めない → ライブラリ優先
-      useLib = desktop || !hasNative;
+      // iOS の BarcodeDetector は PDF417（スマホ画面表示）をサポート申告するが実際は読めない日が多い。
+      // PC Chrome も同様。常に html5-qrcode (ZXing) を既定にして読取り精度を一定に保つ。
+      // 明示的に切替リンクで native を選んだ場合のみ pref==='native' で上書きされる。
+      useLib = true;
     }
 
     if (useLib) {
@@ -677,7 +589,7 @@
           'Content-Type': 'application/json',
           'Cache-Control': 'no-cache',
         },
-        body: JSON.stringify({ memberId: memberId, secret: staffPin }),
+        body: JSON.stringify({ memberId: memberId }),
       });
       const raw = await resp.text();
       let data = {};
@@ -742,13 +654,7 @@
         document.getElementById('rReferral').classList.remove('show');
         document.getElementById('rBirthday').classList.remove('show', 'bonus');
         document.getElementById('rCouponPanel').classList.remove('show');
-        if (resp.status === 401) {
-          nameEl.textContent = 'PIN エラー';
-          visitsEl.textContent = '✕';
-          document.getElementById('rVisitsLabel').textContent = '';
-          msgEl.textContent = 'PINが正しくありません';
-          sessionStorage.removeItem(PIN_KEY);
-        } else {
+        {
           nameEl.textContent = 'エラー';
           visitsEl.textContent = '—';
           document.getElementById('rVisitsLabel').textContent = '';
@@ -891,7 +797,7 @@
       const r = await fetch('/use-coupon', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ memberId: currentCouponMemberId, secret: staffPin }),
+        body: JSON.stringify({ memberId: currentCouponMemberId }),
       });
       const data = await r.json();
       if (r.ok && data.success) {
@@ -911,6 +817,9 @@
       couponBtn.textContent = 'クーポン 1 枚使用';
     }
   });
+
+  // PIN廃止：ロード時に即起動
+  initScanner();
 </script>
 </body>
 </html>

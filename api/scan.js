@@ -91,14 +91,9 @@ module.exports = async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
   if (req.method === 'OPTIONS') return res.status(200).end();
 
-  // GET: PIN検証のみ
+  // GET: バージョン応答（PIN廃止）
   if (req.method === 'GET') {
-    const pin = req.query?.secret;
-    const staffPin = process.env.SCAN_PIN || '0000';
-    if (pin === staffPin) {
-      return res.status(200).json({ valid: true, scanApiVersion: SCAN_API_VERSION });
-    }
-    return res.status(401).json({ valid: false, error: 'Invalid PIN' });
+    return res.status(200).json({ valid: true, scanApiVersion: SCAN_API_VERSION });
   }
 
   if (req.method !== 'POST') {
@@ -109,12 +104,8 @@ module.exports = async function handler(req, res) {
   if (typeof body === 'string') {
     try { body = JSON.parse(body); } catch (_) { body = {}; }
   }
-  let { memberId, secret } = body || {};
+  let { memberId } = body || {};
 
-  const staffPin = process.env.SCAN_PIN || '0000';
-  if (secret !== staffPin) {
-    return res.status(401).json({ error: 'Invalid PIN' });
-  }
   if (!memberId) {
     return res.status(400).json({ error: 'memberId is required' });
   }

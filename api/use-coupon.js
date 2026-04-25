@@ -1,7 +1,7 @@
 /**
  * POST /use-coupon
  * フード1品無料クーポンを 1 枚消費する。
- * Body: { memberId, secret }   secret = SCAN_PIN（scanner.html から呼ぶ）
+ * Body: { memberId }   （scanner.html から呼ぶ。PIN認証は廃止）
  *
  * memberId は scan API の戻り値の data.memberId を使う想定だが、
  * 念のため scan.js と同じく id 直接 → externalId → リスト検索のフォールバックを実装。
@@ -95,12 +95,8 @@ module.exports = async function handler(req, res) {
   if (typeof body === 'string') {
     try { body = JSON.parse(body); } catch { body = {}; }
   }
-  const { memberId, secret } = body || {};
+  const { memberId } = body || {};
 
-  const staffPin = process.env.SCAN_PIN || '0000';
-  if (secret !== staffPin) {
-    return res.status(401).json({ error: 'Invalid PIN' });
-  }
   if (!memberId) {
     return res.status(400).json({ error: 'memberId is required' });
   }

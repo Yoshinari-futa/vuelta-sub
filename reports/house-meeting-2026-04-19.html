@@ -1,0 +1,408 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<title>VUELTA 売上レポート｜ハウスミーティング 2026-04-19</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<style>
+  :root {
+    --bg: #ffffff;
+    --panel: #ffffff;
+    --panel-alt: #fafafa;
+    --border: #e5e7eb;
+    --text: #1f2937;
+    --sub: #6b7280;
+    --accent: #1f2937;
+    --pos: #059669;
+    --neg: #dc2626;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, 'Hiragino Kaku Gothic ProN', 'Yu Gothic', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    padding: 32px 24px;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 1100px; margin: 0 auto; }
+
+  header {
+    padding-bottom: 20px;
+    margin-bottom: 28px;
+    border-bottom: 1px solid var(--border);
+  }
+  header h1 {
+    font-size: 22px;
+    font-weight: 600;
+    color: var(--text);
+    letter-spacing: 0.02em;
+  }
+  header .sub {
+    color: var(--sub);
+    font-size: 13px;
+    margin-top: 4px;
+  }
+
+  .grid { display: grid; gap: 14px; }
+  .g-4 { grid-template-columns: repeat(4, 1fr); }
+  .g-3 { grid-template-columns: repeat(3, 1fr); }
+  .g-2 { grid-template-columns: repeat(2, 1fr); }
+
+  .card {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 18px 20px;
+  }
+  .card h3 {
+    font-size: 11px;
+    color: var(--sub);
+    font-weight: 500;
+    letter-spacing: 0.06em;
+    margin-bottom: 8px;
+    text-transform: uppercase;
+  }
+  .kpi {
+    font-size: 26px;
+    font-weight: 600;
+    color: var(--text);
+    letter-spacing: -0.01em;
+  }
+  .kpi.sm { font-size: 20px; }
+  .kpi .unit { font-size: 12px; color: var(--sub); margin-left: 4px; font-weight: 400; }
+  .delta {
+    font-size: 12px;
+    margin-top: 6px;
+    color: var(--sub);
+  }
+  .delta.up { color: var(--pos); }
+  .delta.dn { color: var(--neg); }
+
+  section { margin-top: 28px; }
+  section h2 {
+    font-size: 14px;
+    color: var(--text);
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    margin-bottom: 12px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+  }
+  th, td {
+    padding: 8px 12px;
+    text-align: left;
+    border-bottom: 1px solid var(--border);
+  }
+  th {
+    color: var(--sub);
+    font-weight: 500;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    background: var(--panel-alt);
+  }
+  td.num { text-align: right; font-variant-numeric: tabular-nums; }
+  tbody tr:last-child td { border-bottom: none; }
+  .rank { color: var(--sub); font-weight: 500; width: 28px; }
+
+  .chart-box { position: relative; height: 220px; margin-top: 6px; }
+
+  .pill {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: 500;
+    background: var(--panel-alt);
+    color: var(--sub);
+    border: 1px solid var(--border);
+  }
+
+  ul.memo {
+    padding-left: 18px;
+    line-height: 1.9;
+    font-size: 13.5px;
+  }
+  ul.memo li { margin-bottom: 4px; }
+  ul.memo b { color: var(--text); }
+
+  footer {
+    margin-top: 36px;
+    padding-top: 14px;
+    border-top: 1px solid var(--border);
+    color: var(--sub);
+    font-size: 11px;
+    text-align: center;
+  }
+
+  @media print {
+    body { padding: 12px; }
+    .card { break-inside: avoid; }
+    section { break-inside: avoid; }
+  }
+  @media (max-width: 900px) {
+    .g-4, .g-3 { grid-template-columns: repeat(2, 1fr); }
+    .g-2 { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <h1>VUELTA 売上レポート</h1>
+  <div class="sub">ハウスミーティング用資料｜2026年4月19日｜データ取得元: Square Orders API（営業日境界 5:00 JST）</div>
+</header>
+
+<section>
+  <h2>サマリー（3月実績 vs 4月1〜18日）</h2>
+  <div class="grid g-4">
+    <div class="card">
+      <h3>3月 総売上</h3>
+      <div class="kpi">¥602,790</div>
+      <div class="delta">取引 119件 ／ 17営業日</div>
+    </div>
+    <div class="card">
+      <h3>4月 総売上（1〜18日）</h3>
+      <div class="kpi">¥628,150</div>
+      <div class="delta up">3月実績を既に超過（+4.2%）</div>
+    </div>
+    <div class="card">
+      <h3>3月 平均日商</h3>
+      <div class="kpi sm">¥35,458</div>
+      <div class="delta">客単価 ¥4,215 ／ 143人</div>
+    </div>
+    <div class="card">
+      <h3>4月 平均日商</h3>
+      <div class="kpi sm">¥41,877</div>
+      <div class="delta up">+18.1%（客単価 ¥3,306 ／ 190人）</div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2>来店人数・客単価（Cover Charge個数ベース）</h2>
+  <div class="grid g-3">
+    <div class="card">
+      <h3>来店人数</h3>
+      <div class="kpi">143<span class="unit">人 → </span>190<span class="unit">人</span></div>
+      <div class="delta up">+47人（+32.9%）</div>
+    </div>
+    <div class="card">
+      <h3>平均客単価</h3>
+      <div class="kpi">¥4,215<span class="unit"> → </span>¥3,306</div>
+      <div class="delta dn">−¥909（−21.6%）</div>
+    </div>
+    <div class="card">
+      <h3>返金</h3>
+      <div class="kpi sm">3月 ¥12,800<span class="unit">（5件）</span></div>
+      <div class="delta">4月 ¥0（0件）</div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2>日別売上推移</h2>
+  <div class="grid g-2">
+    <div class="card">
+      <h3><span class="pill">3月</span> 日別売上</h3>
+      <div class="chart-box"><canvas id="marDaily"></canvas></div>
+    </div>
+    <div class="card">
+      <h3><span class="pill">4月1〜18日</span> 日別売上</h3>
+      <div class="chart-box"><canvas id="aprDaily"></canvas></div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2>決済方法別構成比</h2>
+  <div class="grid g-2">
+    <div class="card">
+      <h3><span class="pill">3月</span> 決済方法</h3>
+      <div class="chart-box"><canvas id="marPay"></canvas></div>
+    </div>
+    <div class="card">
+      <h3><span class="pill">4月</span> 決済方法</h3>
+      <div class="chart-box"><canvas id="aprPay"></canvas></div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2>商品売上ランキング TOP10</h2>
+  <div class="grid g-2">
+    <div class="card">
+      <h3><span class="pill">3月</span> 商品TOP10</h3>
+      <table>
+        <thead><tr><th>#</th><th>商品</th><th class="num">数量</th><th class="num">売上</th></tr></thead>
+        <tbody id="marItems"></tbody>
+      </table>
+    </div>
+    <div class="card">
+      <h3><span class="pill">4月1〜18日</span> 商品TOP10</h3>
+      <table>
+        <thead><tr><th>#</th><th>商品</th><th class="num">数量</th><th class="num">売上</th></tr></thead>
+        <tbody id="aprItems"></tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2>最高・最低売上日</h2>
+  <div class="grid g-4">
+    <div class="card">
+      <h3>3月 最高売上日</h3>
+      <div class="kpi sm">3月20日</div>
+      <div class="delta up">¥113,800（9件）</div>
+    </div>
+    <div class="card">
+      <h3>3月 最低売上日</h3>
+      <div class="kpi sm">3月11日</div>
+      <div class="delta dn">¥100（2件）</div>
+    </div>
+    <div class="card">
+      <h3>4月 最高売上日</h3>
+      <div class="kpi sm">4月11日</div>
+      <div class="delta up">¥104,500（10件）</div>
+    </div>
+    <div class="card">
+      <h3>4月 最低売上日</h3>
+      <div class="kpi sm">4月6日</div>
+      <div class="delta dn">¥15,350（2件）</div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2>メモ</h2>
+  <div class="card">
+    <ul class="memo">
+      <li>営業日境界は 5:00 JST（翌朝5時までを当日として集計）</li>
+      <li>4月は18日時点で既に3月総売上を超過。単純按分による4月末見込み ≈ <b>¥1,046,917</b></li>
+      <li>来店人数は +32.9% と大幅増、一方で一人あたり単価は −21.6%（低単価メニューの構成比増、もしくはグループ客増の可能性）</li>
+      <li>決済方法は4月に現金比率が 27% → 35% に上昇</li>
+      <li>取得条件: location=LJ9MN31J94JP0, state=COMPLETED</li>
+    </ul>
+  </div>
+</section>
+
+<footer>Square Orders API 集計 ／ Generated 2026-04-19</footer>
+
+</div>
+
+<script>
+Chart.defaults.color = '#6b7280';
+Chart.defaults.borderColor = '#e5e7eb';
+Chart.defaults.font.family = "-apple-system, 'Hiragino Kaku Gothic ProN', 'Yu Gothic', sans-serif";
+Chart.defaults.font.size = 11;
+
+const marDaily = {
+  labels: ['3/11','3/15','3/16','3/17','3/18','3/19','3/20','3/21','3/22','3/23','3/24','3/25','3/27','3/28','3/29','3/30','3/31'],
+  data: [100,82780,32150,41150,21950,5950,113800,54060,35050,28550,51850,38450,12400,28900,8800,24600,22250]
+};
+const aprDaily = {
+  labels: ['4/1','4/3','4/4','4/5','4/6','4/7','4/8','4/10','4/11','4/12','4/13','4/14','4/15','4/17','4/18'],
+  data: [37950,29800,18450,44500,15350,29350,56200,50050,104500,46790,22550,52400,30450,39500,50310]
+};
+
+function barChart(id, labels, data, color) {
+  return new Chart(document.getElementById(id), {
+    type: 'bar',
+    data: { labels, datasets: [{ data, backgroundColor: color, borderRadius: 2, maxBarThickness: 28 }] },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: false },
+        tooltip: { callbacks: { label: (c) => '¥' + c.raw.toLocaleString('ja-JP') } } },
+      scales: {
+        y: { beginAtZero: true, ticks: { callback: v => '¥' + (v/1000) + 'k' }, grid: { color: '#f3f4f6' } },
+        x: { grid: { display: false } }
+      }
+    }
+  });
+}
+
+barChart('marDaily', marDaily.labels, marDaily.data, '#60a5fa');
+barChart('aprDaily', aprDaily.labels, aprDaily.data, '#34d399');
+
+const marPay = {
+  labels: ['カード（VISA）','現金','カード（AMEX）','カード（MASTERCARD）','カード（JCB）'],
+  data: [169400,164380,133260,84800,50950]
+};
+const aprPay = {
+  labels: ['現金','カード（VISA）','カード（MASTERCARD）','カード（AMEX）','カード（JCB）'],
+  data: [220600,202550,132600,44750,27650]
+};
+
+function doughnut(id, labels, data, colors) {
+  return new Chart(document.getElementById(id), {
+    type: 'doughnut',
+    data: { labels, datasets: [{ data, backgroundColor: colors, borderColor: '#ffffff', borderWidth: 2 }] },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      cutout: '55%',
+      plugins: {
+        legend: { position: 'right', labels: { font: { size: 11 }, boxWidth: 12, padding: 8 } },
+        tooltip: { callbacks: {
+          label: (c) => {
+            const total = c.dataset.data.reduce((s,v)=>s+v,0);
+            const pct = total ? Math.round(c.raw/total*100) : 0;
+            return `${c.label}: ¥${c.raw.toLocaleString('ja-JP')} (${pct}%)`;
+          }
+        } }
+      }
+    }
+  });
+}
+
+const palette = ['#60a5fa','#34d399','#fbbf24','#f87171','#a78bfa'];
+doughnut('marPay', marPay.labels, marPay.data, palette);
+doughnut('aprPay', aprPay.labels, aprPay.data, palette);
+
+const marItems = [
+  ['Louis Roederer Cristal',1,72728],
+  ['SP',48,41095],
+  ['Cover Charge',143,39007],
+  ['1886',37,35274],
+  ['Carnitas Tacos',38,31087],
+  ['不明',8,30603],
+  ['Setouchi Fizz',28,24187],
+  ['Gansu Tacos',25,22725],
+  ['26 hours',20,22047],
+  ['The OKONOMIYAKI',18,19638],
+];
+const aprItems = [
+  ['SP',76,69052],
+  ['Cover Charge',190,51829],
+  ['Free',1,44000],
+  ['Yamazaki 12y',42,38181],
+  ['Carnitas Tacos',37,30268],
+  ['Yaoyorozu Mule ∞',26,28366],
+  ['1886',23,27185],
+  ['The OKONOMIYAKI',23,25093],
+  ['Spring Bloom Margarita',28,24188],
+  ['26 hours',18,20456],
+];
+
+function fillItems(tbodyId, rows) {
+  const tb = document.getElementById(tbodyId);
+  rows.forEach(([name, qty, amt], i) => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td class="rank">${i+1}</td><td>${name}</td><td class="num">${qty}</td><td class="num">¥${amt.toLocaleString('ja-JP')}</td>`;
+    tb.appendChild(tr);
+  });
+}
+fillItems('marItems', marItems);
+fillItems('aprItems', aprItems);
+</script>
+
+</body>
+</html>
