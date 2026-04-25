@@ -134,6 +134,16 @@
   }
   .referral-banner.show { display: block; }
 
+  .birthday-banner {
+    margin-top: 12px; padding: 12px 14px;
+    background: linear-gradient(135deg, #4a1a4d, #3d1f5c);
+    border-radius: 8px;
+    color: #fff; font-size: 13px; font-weight: 600; text-align: center;
+    display: none;
+  }
+  .birthday-banner.show { display: block; }
+  .birthday-banner.bonus { background: linear-gradient(135deg, #c8a84e, #b8902a); color: #1a1a1a; }
+
   .next-btn {
     display: block; width: 100%; max-width: 400px;
     margin: 16px auto 32px; padding: 14px;
@@ -213,6 +223,7 @@
     <div class="visits" id="rVisits"></div>
     <div class="visits-label" id="rVisitsLabel">VISITS</div>
     <div class="tier-badge" id="rTier"></div>
+    <div class="birthday-banner" id="rBirthday"></div>
     <div class="referral-banner" id="rReferral"></div>
     <div class="coupon-panel" id="rCouponPanel">
       <div class="coupon-label">Food coupon</div>
@@ -389,6 +400,7 @@
     document.getElementById('result').classList.remove('show');
     document.getElementById('nextBtn').style.display = 'none';
     document.getElementById('rReferral').classList.remove('show');
+    document.getElementById('rBirthday').classList.remove('show', 'bonus');
     document.getElementById('rCouponPanel').classList.remove('show');
     document.getElementById('hint').textContent = 'バーコードをかざしてください';
     document.getElementById('manualInput').value = '';
@@ -711,6 +723,16 @@
         } else {
           refBanner.classList.remove('show');
         }
+        // 誕生日バナー
+        const bdBanner = document.getElementById('rBirthday');
+        bdBanner.classList.remove('show', 'bonus');
+        if (data.birthdayBonusGranted) {
+          bdBanner.textContent = '🎂 Happy Birthday! フード1品無料クーポン進呈！';
+          bdBanner.classList.add('show', 'bonus');
+        } else if (data.isBirthdayMonth) {
+          bdBanner.textContent = '🎂 今月お誕生日（特典は付与済み）';
+          bdBanner.classList.add('show');
+        }
         // フードクーポン表示
         updateCouponPanel(data.memberId, data.foodCoupons);
         if (navigator.vibrate) navigator.vibrate(80);
@@ -718,6 +740,7 @@
         card.className = 'result-card error';
         document.getElementById('rTier').style.display = 'none';
         document.getElementById('rReferral').classList.remove('show');
+        document.getElementById('rBirthday').classList.remove('show', 'bonus');
         document.getElementById('rCouponPanel').classList.remove('show');
         if (resp.status === 401) {
           nameEl.textContent = 'PIN エラー';

@@ -13,6 +13,9 @@ const { TIER_BASE, TIER_SILVER, TIER_GOLD, TIER_BLACK, TIER_RAINBOW } = require(
 const { getGeofenceLocations } = require('../lib/geofence');
 const { getReferralBackFields, getReferralMetaData } = require('../lib/referral');
 const { getWalletPushTrigger } = require('../lib/wallet-push');
+const { isBirthdayMonth, getJSTDate } = require('../lib/birthday');
+
+const META_BIRTHDAY_GRANTED_YEAR = 'birthdayCouponGrantedYear';
 const {
   META_FOOD_COUPONS,
   META_PENDING_REFERRAL,
@@ -274,6 +277,8 @@ module.exports = async function handler(req, res) {
       foodCoupons: extra.foodCoupons != null ? extra.foodCoupons : readFoodCoupons(member),
       referralGranted: !!extra.referralGranted,
       referrerName: extra.referrerName || null,
+      isBirthdayMonth: !!extra.isBirthdayMonth,
+      birthdayBonusGranted: !!extra.birthdayBonusGranted,
       message: tierChanged
         ? `${displayName}さん ${newPoints}回目の来店！🎉 ${newTier.label}ランクに昇格！`
         : `${displayName}さん ${newPoints}回目の来店！`,
@@ -289,12 +294,29 @@ module.exports = async function handler(req, res) {
     const pendingRefId = readPendingReferral(member);
     let referrerMember = null;
     let grantedFoodCoupons = readFoodCoupons(member);
+
+    // 誕生月判定（来店スキャン時に年 1 回だけフード1品無料を自動付与）
+    const memberBirthMonth = member.metaData?.birthMonth || '';
+    const memberIsBirthdayMonth = isBirthdayMonth(memberBirthMonth);
+    const currentYearJST = String(getJSTDate().year);
+    const lastBirthdayGrantYear = String(member.metaData?.[META_BIRTHDAY_GRANTED_YEAR] || '');
+    const birthdayBonusGranted =
+      memberIsBirthdayMonth && lastBirthdayGrantYear !== currentYearJST;
+
     const nextMetaData = {
       ...(member.metaData || {}),
-      ...getReferralMetaData(member.externalId || member.id),  // Information 欄をリマインド後も紹介リンクに戻す
+      // Information 欄をリマインド後も最新の状態に戻す（誕生月なら誕生日メッセージに切替）
+      ...getReferralMetaData(member.externalId || member.id, { birthMonth: memberBirthMonth }),
       lastVisit: new Date().toISOString(),
       reminderSent: '',  // スキャン時にリマインドフラグをリセット
     };
+
+    if (birthdayBonusGranted) {
+      grantedFoodCoupons += 1;
+      nextMetaData[META_FOOD_COUPONS] = String(grantedFoodCoupons);
+      nextMetaData[META_BIRTHDAY_GRANTED_YEAR] = currentYearJST;
+      console.log(`[SCAN] Birthday bonus: ${displayName} +1 food coupon (year=${currentYearJST}, birthMonth=${memberBirthMonth})`);
+    }
 
     if (pendingRefId && pendingRefId !== (member.externalId || member.id)) {
       referrerMember = await findMemberByExternalId({
@@ -339,6 +361,32 @@ module.exports = async function handler(req, res) {
       results.updateMember = { status: r.status, ok: r.ok, body: t.substring(0, 300) };
       console.log(`[SCAN] updateMember: ${r.status} ${t.substring(0, 200)}`);
       if (r.ok) {
+        // 誕生日ボーナス成立時に Slack 通知
+        if (birthdayBonusGranted) {
+          const slackUrl = process.env.SLACK_WEBHOOK_URL;
+          if (slackUrl) {
+            try {
+              await fetch(slackUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  blocks: [
+                    { type: 'header', text: { type: 'plain_text', text: '🎂 誕生日特典 進呈！', emoji: true } },
+                    {
+                      type: 'section',
+                      text: {
+                        type: 'mrkdwn',
+                        text: `*${displayName}* さん（誕生月: ${memberBirthMonth}）が来店\nフード 1 品無料クーポン +1 枚`,
+                      },
+                    },
+                  ],
+                }),
+              });
+            } catch (slackErr) {
+              console.error(`[SCAN] Birthday Slack notify failed: ${slackErr.message}`);
+            }
+          }
+        }
         // 紹介者側にもフードクーポンを +1（成立時のみ）
         let referrerName = null;
         if (referrerMember) {
@@ -385,6 +433,8 @@ module.exports = async function handler(req, res) {
             foodCoupons: grantedFoodCoupons,
             referralGranted: !!referrerMember,
             referrerName,
+            isBirthdayMonth: memberIsBirthdayMonth,
+            birthdayBonusGranted,
           })
         );
       }

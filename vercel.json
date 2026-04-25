@@ -20,6 +20,10 @@
     {
       "path": "/customer-receipt-oku",
       "schedule": "0 22 * * *"
+    },
+    {
+      "path": "/birthday-push",
+      "schedule": "0 0 1 * *"
     }
   ],
   "builds": [
@@ -116,6 +120,10 @@
     {
       "src": "/share/(?<id>[^/]+)",
       "dest": "/api/share-page.js?id=$id"
+    },
+    {
+      "src": "/birthday-push",
+      "dest": "/api/birthday-push.js"
     }
   ]
 }

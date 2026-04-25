@@ -175,7 +175,7 @@ async function deletePassKitMember(externalId) {
 }
 
 // PassKit会員証生成（タイムアウト付き）
-async function generatePassKitCard({ email, name, customerId, tierId, referrerId }) {
+async function generatePassKitCard({ email, name, customerId, tierId, referrerId, birthMonth }) {
   const { token, baseUrl: passkitBaseUrl } = getPassKitAuth();
   const programId = process.env.PASSKIT_PROGRAM_ID;
   const passkitApiKeyId = (process.env.PASSKIT_API_KEY || '').trim();
@@ -211,7 +211,8 @@ async function generatePassKitCard({ email, name, customerId, tierId, referrerId
         tierPoints: 0,
         secondaryPoints: push.secondaryPoints,
         metaData: {
-          ...getReferralMetaData(customerId),
+          ...getReferralMetaData(customerId, { birthMonth }),
+          ...(birthMonth ? { birthMonth } : {}),
           ...(referrerId && referrerId !== customerId
             ? { [META_PENDING_REFERRAL]: referrerId }
             : {}),
@@ -554,7 +555,9 @@ async function handler(req, res) {
       const customerEmail = session.customer_email || session.customer_details?.email;
       const customerName = session.customer_details?.name || 'VUELTA Member';
       const referrerId = (session.client_reference_id || '').trim();
-      console.log(`[WEBHOOK] Customer: name=${customerName}, email=${customerEmail}, stripeId=${session.customer}${referrerId ? `, referrer=${referrerId}` : ''}`);
+      const birthMonthField = customFields.find((f) => f.key === 'birth_month');
+      const birthMonth = (birthMonthField?.value || '').trim();
+      console.log(`[WEBHOOK] Customer: name=${customerName}, email=${customerEmail}, stripeId=${session.customer}${referrerId ? `, referrer=${referrerId}` : ''}${birthMonth ? `, birthMonth=${birthMonth}` : ''}`);
 
       if (!customerEmail) {
         console.error('[WEBHOOK] ERROR: No email found in session data');
@@ -585,6 +588,7 @@ async function handler(req, res) {
           customerId: session.customer || session.id,
           tierId: TIER_BASE,
           referrerId,
+          birthMonth,
         });
         console.log(`[PASSKIT] SUCCESS: ${walletUrl}`);
       } catch (err) {

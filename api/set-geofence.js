@@ -90,13 +90,15 @@ module.exports = async function handler(req, res) {
       for (const m of members) {
         if (!m.id) continue;
         const push = getWalletPushTrigger();
+        const memberBirthMonth = m.metaData?.birthMonth || '';
         const updateBody = {
           id: m.id,
           programId: m.programId || programId,
           secondaryPoints: push.secondaryPoints,  // Wallet push 発火用（値を変えるだけ）
           metaData: {
             ...(m.metaData || {}),
-            ...getReferralMetaData(m.externalId || m.id),  // Information 欄を紹介リンクに差し替え
+            // Information 欄を紹介リンクに差し替え（誕生月なら誕生日メッセージ）
+            ...getReferralMetaData(m.externalId || m.id, { birthMonth: memberBirthMonth }),
           },
           passOverrides: {
             locations: [locationEntry],
