@@ -124,6 +124,10 @@
     {
       "src": "/birthday-push",
       "dest": "/api/birthday-push.js"
+    },
+    {
+      "src": "/slack-relay",
+      "dest": "/api/slack-relay.js"
     }
   ]
 }
