@@ -10,7 +10,7 @@
 
 const { getPassKitAuth } = require('../lib/passkit-auth');
 const { TIER_BASE, TIER_SILVER, TIER_GOLD, TIER_BLACK, TIER_RAINBOW } = require('../lib/passkit-tier-ids');
-const { getGeofenceLocation } = require('../lib/geofence');
+const { getGeofenceLocations } = require('../lib/geofence');
 const { getReferralBackFields, getReferralMetaData } = require('../lib/referral');
 const { getWalletPushTrigger } = require('../lib/wallet-push');
 const { getBirthDateFromMember } = require('../lib/birthday');
@@ -35,8 +35,7 @@ module.exports = async function handler(req, res) {
       return res.status(500).json({ error: 'PASSKIT_PROGRAM_ID required' });
     }
 
-    const locationEntry = getGeofenceLocation();
-    const { lat, lon: lng, lockScreenMessage: relevantText } = locationEntry;
+    const locations = getGeofenceLocations();
 
     let token, baseUrl;
     try {
@@ -103,7 +102,7 @@ module.exports = async function handler(req, res) {
             ...getReferralMetaData(m.externalId || m.id, { birthMonth: memberBirthMonth }),
           },
           passOverrides: {
-            locations: [locationEntry],
+            locations: locations,
             backFields: getReferralBackFields(m.externalId || m.id),
             relevantDate: push.relevantDate,  // Wallet push 発火用
           },
@@ -178,7 +177,7 @@ module.exports = async function handler(req, res) {
         delete updatePayload.metrics;
         delete updatePayload.created;
         delete updatePayload.updated;
-        updatePayload.locations = [locationEntry];
+        updatePayload.locations = locations;
 
         const putResp = await fetch(`${baseUrl}/template`, {
           method: 'PUT',
@@ -200,14 +199,17 @@ module.exports = async function handler(req, res) {
     const success = steps.some(s => s.step === 'members_updated' && s.updated > 0);
     res.status(success ? 200 : 500).json({
       ok: success,
-      endpoint: 'set-geofence-v2',
+      endpoint: 'set-geofence-v3',
       timestamp: new Date().toISOString(),
-      target: { lat, lng, relevantText },
+      target: {
+        count: locations.length,
+        locations: locations.map(l => ({ lat: l.lat, lng: l.lon, text: l.lockScreenMessage, radius: l.maxDistance })),
+      },
       steps,
     });
 
   } catch (err) {
     steps.push({ step: 'error', message: err.message });
-    res.status(500).json({ ok: false, endpoint: 'set-geofence-v2', steps });
+    res.status(500).json({ ok: false, endpoint: 'set-geofence-v3', steps });
   }
 };

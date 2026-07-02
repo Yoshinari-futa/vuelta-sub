@@ -18,7 +18,7 @@
 const { getPassKitAuth } = require('../lib/passkit-auth');
 const { getReferralMetaData, getReferralBackFields } = require('../lib/referral');
 const { getWalletPushTrigger } = require('../lib/wallet-push');
-const { getGeofenceLocation } = require('../lib/geofence');
+const { getGeofenceLocations } = require('../lib/geofence');
 const { isMemberBirthdayMonth, getBirthDateFromMember, getJSTDate } = require('../lib/birthday');
 
 function parseListResponse(text) {
@@ -110,7 +110,7 @@ module.exports = async function handler(req, res) {
           ...getReferralMetaData(externalId, { birthMonth }),
         },
         passOverrides: {
-          locations: [getGeofenceLocation()],
+          locations: getGeofenceLocations(),
           backFields: getReferralBackFields(externalId),
           relevantDate: push.relevantDate,
         },
