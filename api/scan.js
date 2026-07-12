@@ -25,7 +25,7 @@ const {
   findMemberByExternalId,
 } = require('../lib/coupons');
 
-const SCAN_API_VERSION = '2026-04-24-v14-referral';
+const SCAN_API_VERSION = '2026-07-12-v15-fast-lookup';
 
 // ── ティア判定 ──
 // Base(白): 0〜3, Gold(金): 4〜15, Silver(銀): 16〜50, Black(黒): 51〜99, Rainbow(虹): 100+
@@ -121,9 +121,10 @@ module.exports = async function handler(req, res) {
     let member = null;
     let foundVia = '';
 
-    // 1a: ID直接
+    // 1a: ID直接（正パスは /members/member/id/{id}。旧 /members/member/{id} は常に404で
+    //     リスト500件検索へ落ちておりスキャンが約2秒遅かった。2026-07-12 実測で修正）
     try {
-      const r = await fetch(`${baseUrl}/members/member/${cleanId}`, {
+      const r = await fetch(`${baseUrl}/members/member/id/${cleanId}`, {
         headers: { Authorization: token },
       });
       if (r.ok) {
@@ -227,7 +228,7 @@ module.exports = async function handler(req, res) {
 
     // メンバーをフルGETで最新データに更新
     try {
-      const r = await fetch(`${baseUrl}/members/member/${member.id}`, {
+      const r = await fetch(`${baseUrl}/members/member/id/${member.id}`, {
         headers: { Authorization: token },
       });
       if (r.ok) {

@@ -222,6 +222,8 @@
   function initScanner() {
     document.getElementById('manualWrap').classList.add('show');
     document.getElementById('modeRow').classList.add('show');
+    // /scan 関数のコールドスタートを先に済ませる（夜の1発目のスキャンが数秒待ちになるのを防ぐ）
+    fetch('/scan', { cache: 'no-store' }).catch(() => {});
     // iOS Safari では最初のユーザー操作時に AudioContext を作らないと音が鳴らない
     try {
       audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
@@ -457,14 +459,15 @@
     html5QrCode = new Html5Qrcode('qr-reader', { formatsToSupport: formats, verbose: false });
 
     const desktop = isDesktopLike();
-    // PDF417 は横長のバーコード。横幅いっぱい・縦は細めのスキャン枠を使う
+    // 2026-07-12: パスのバーコードを PDF417 → QR に変更済み。
+    // QR は正方形なので、旧来の横長帯だと枠から縦にはみ出して認識が遅かった。
+    // 正方形寄りの大きめ枠にする（旧 PDF417 パス未更新の会員もこの枠で読める）
     const scanConfig = {
       fps: 20,  // was 12 — 1 秒あたりのスキャン試行回数を 1.7 倍に
       qrbox: (w, h) => {
-        // 画面幅の 95%、縦はその 1/3 程度（PDF417 の縦横比を想定）
         return {
-          width: Math.floor(w * 0.95),
-          height: Math.floor(Math.min(h * 0.45, w * 0.35)),
+          width: Math.floor(w * 0.9),
+          height: Math.floor(Math.min(h * 0.7, w * 0.7)),
         };
       },
       aspectRatio: 1.0,

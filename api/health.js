@@ -73,7 +73,7 @@ module.exports = async function handler(req, res) {
       const memberId = req.query?.member;
       if (memberId) {
         try {
-          const mr = await fetch(`${baseUrl}/members/member/${encodeURIComponent(memberId)}`, {
+          const mr = await fetch(`${baseUrl}/members/member/id/${encodeURIComponent(memberId)}`, {
             headers: { Authorization: token },
           });
           const mt = await mr.text();

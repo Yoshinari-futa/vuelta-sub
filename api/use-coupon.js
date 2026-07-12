@@ -31,9 +31,9 @@ function parseListResponse(text) {
 }
 
 async function findMember({ token, baseUrl, programId, memberId }) {
-  // 1a: ID 直接 GET
+  // 1a: ID 直接 GET（正パスは /members/member/id/{id}。2026-07-12 修正）
   try {
-    const r = await fetch(`${baseUrl}/members/member/${encodeURIComponent(memberId)}`, {
+    const r = await fetch(`${baseUrl}/members/member/id/${encodeURIComponent(memberId)}`, {
       headers: { Authorization: token },
     });
     if (r.ok) return { member: await r.json(), via: 'directId' };

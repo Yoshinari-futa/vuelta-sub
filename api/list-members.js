@@ -54,7 +54,7 @@ module.exports = async function handler(req, res) {
     if (scannedId) {
       // 直接ID
       try {
-        const r = await fetch(`${host}/members/member/${scannedId}`, {
+        const r = await fetch(`${host}/members/member/id/${scannedId}`, {
           headers: { 'Authorization': token },
         });
         const t = await r.text();
