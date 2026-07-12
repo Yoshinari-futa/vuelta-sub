@@ -240,21 +240,30 @@ def notion_patch(token, path, body):
 # ──────────────────────────────
 
 def search_customer_by_name(token, customer_db_id, name):
-    """名前でお客様ノートを検索。最初にヒットしたページIDを返す"""
+    """名前でお客様ノートを検索。完全一致を優先し、なければ部分一致。"""
     body = {
         "filter": {
             "property": "お名前",
-            "title": {"contains": name}
+            "title": {"equals": name}
         },
-        "page_size": 5,
+        "page_size": 1,
     }
+    resp = notion_post(token, f"/databases/{customer_db_id}/query", body)
+    if resp.status_code == 200:
+        results = resp.json().get("results", [])
+        if results:
+            log.info(f"  既存顧客ヒット(exact): {results[0]['id']}")
+            return results[0]["id"]
+
+    body["filter"]["title"] = {"contains": name}
+    body["page_size"] = 5
     resp = notion_post(token, f"/databases/{customer_db_id}/query", body)
     if resp.status_code != 200:
         log.warning(f"お客様ノート検索エラー: {resp.status_code} {resp.text[:100]}")
         return None
     results = resp.json().get("results", [])
     if results:
-        log.info(f"  既存顧客ヒット: {results[0]['id']} ({len(results)}件)")
+        log.info(f"  既存顧客ヒット(contains): {results[0]['id']} ({len(results)}件)")
         return results[0]["id"]
     return None
 
@@ -275,6 +284,10 @@ def create_customer(token, customer_db_id, fields, visit_date):
     f = fields.get("流入", "")
     if f in 流入_valid:
         props["流入経路"] = {"select": {"name": f}}
+    if "メモ" in fields:
+        props["話したこと・メモ"] = {
+            "rich_text": [{"text": {"content": f"[{visit_date}] {fields['メモ']}"}}]
+        }
 
     body = {"parent": {"database_id": customer_db_id}, "properties": props}
     resp = notion_post(token, "/pages", body)
@@ -285,8 +298,8 @@ def create_customer(token, customer_db_id, fields, visit_date):
     return page["id"]
 
 
-def update_customer(token, page_url, visit_date):
-    """既存顧客の最終来店日・来店回数を更新"""
+def update_customer(token, page_url, fields, visit_date):
+    """既存顧客の最終来店日・来店回数を更新し、メモを日付付きで追記"""
     page_id = page_url.split("/")[-1].replace("-", "")
 
     # 現在の来店回数を取得
@@ -314,6 +327,18 @@ def update_customer(token, page_url, visit_date):
         "最終来店日": {"date": {"start": visit_date}},
         "タイプ": {"select": {"name": new_type}},
     }
+
+    if "メモ" in fields:
+        existing = "".join(
+            rt.get("plain_text", "")
+            for rt in (props.get("話したこと・メモ", {}).get("rich_text") or [])
+        )
+        line = f"[{visit_date}] {fields['メモ']}"
+        appended = f"{existing}\n{line}" if existing else line
+        if len(appended) > 1900:
+            appended = appended[-1900:]
+        update_props["話したこと・メモ"] = {"rich_text": [{"text": {"content": appended}}]}
+
     notion_patch(token, f"/pages/{page_id}", {"properties": update_props})
     log.info(f"  顧客情報更新: 来店{current_count + 1}回, タイプ={new_type}")
 
@@ -321,6 +346,23 @@ def update_customer(token, page_url, visit_date):
 # ──────────────────────────────
 # 来店記録操作
 # ──────────────────────────────
+
+def visit_record_exists(token, visit_db_id, name, visit_date):
+    """同じ来店日+名前の来店記録が既にあるか（二重登録防止）。
+    チェック自体が失敗した場合は False（登録優先＝取りこぼし防止）。"""
+    body = {
+        "filter": {"and": [
+            {"property": "来店日", "date": {"equals": visit_date}},
+            {"property": "日付メモ", "title": {"contains": name}},
+        ]},
+        "page_size": 1,
+    }
+    resp = notion_post(token, f"/databases/{visit_db_id}/query", body)
+    if resp.status_code != 200:
+        log.warning(f"来店記録重複チェックエラー: {resp.status_code} {resp.text[:100]}")
+        return False
+    return bool(resp.json().get("results"))
+
 
 def create_visit_record(token, visit_db_id, fields, message_ts, customer_page_url=None):
     """来店記録に1件登録"""
@@ -335,9 +377,9 @@ def create_visit_record(token, visit_db_id, fields, message_ts, customer_page_ur
         "来店日": {"date": {"start": visit_date}},
     }
 
-    # お客さんリレーション
+    # お客様リレーション（プロパティ名は2026-07-12に「お客さん」→「お客様」へ変更済み）
     if customer_page_url:
-        props["お客さん"] = {"relation": [{"id": customer_page_url}]}
+        props["お客様"] = {"relation": [{"id": customer_page_url}]}
 
     if order:
         props["注文したもの"] = {"rich_text": [{"text": {"content": order}}]}
@@ -352,10 +394,10 @@ def create_visit_record(token, visit_db_id, fields, message_ts, customer_page_ur
         memo_parts.append(fields["メモ"])
     if "流入" in fields:
         memo_parts.append(f"流入: {fields['流入']}")
-    if "紹介者" in fields:
-        memo_parts.append(f"紹介者: {fields['紹介者']}")
     if memo_parts:
         props["雰囲気・メモ"] = {"rich_text": [{"text": {"content": "\n".join(memo_parts)}}]}
+    if "紹介者" in fields:
+        props["紹介者"] = {"rich_text": [{"text": {"content": fields["紹介者"]}}]}
     if "次回" in fields:
         props["次回アクション"] = {"rich_text": [{"text": {"content": fields["次回"]}}]}
 
@@ -413,13 +455,15 @@ def main():
 
     diagnose_slack(slack_token, channel_id)
 
-    oldest = str(time.time() - 48 * 3600)
+    # oldest は必ず小数6桁にする。7桁だと Slack API が黙って0件を返す（2026-07-12 実測）
+    oldest = f"{time.time() - 48 * 3600:.6f}"
     messages = get_slack_messages(slack_token, channel_id, oldest)
     log.info(f"取得メッセージ数: {len(messages)}件 (oldest={oldest})")
 
     processed = load_processed()
     new_count = 0
     skip_already = 0
+    skip_duplicate = 0
     skip_no_template = 0
     error_count = 0
 
@@ -444,6 +488,14 @@ def main():
                 ts_dt = datetime.fromtimestamp(float(ts), tz=JST)
                 visit_date = ts_dt.date().isoformat()
 
+                # Notion側に同じ来店日+名前の記録が既にあれば、顧客更新ごとスキップ
+                # （来店回数の二重カウント防止）
+                if visit_record_exists(notion_token, visit_db_id, name, visit_date):
+                    log.info(f"  来店記録が既に存在するためスキップ: {visit_date} {name}")
+                    processed.add(ts)
+                    skip_duplicate += 1
+                    continue
+
                 customer_page_url = None
 
                 if is_new:
@@ -453,7 +505,7 @@ def main():
                     # リピーター：名前で検索
                     customer_page_url = search_customer_by_name(notion_token, customer_db_id, name)
                     if customer_page_url:
-                        update_customer(notion_token, customer_page_url, visit_date)
+                        update_customer(notion_token, customer_page_url, fields, visit_date)
                     else:
                         log.info(f"  名前が見つからないため新規登録: {name}")
                         customer_page_url = create_customer(notion_token, customer_db_id, fields, visit_date)
@@ -475,6 +527,7 @@ def main():
     log.info(
         f"=== 完了: 登録 {new_count}件 / "
         f"既処理スキップ {skip_already}件 / "
+        f"Notion重複スキップ {skip_duplicate}件 / "
         f"テンプレート無しスキップ {skip_no_template}件 / "
         f"エラー {error_count}件 ==="
     )

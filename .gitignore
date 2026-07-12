@@ -45,3 +45,4 @@ temp/
 coverage/
 .nyc_output/
 .vercel
+__pycache__/
