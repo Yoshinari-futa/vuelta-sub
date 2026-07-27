@@ -193,6 +193,25 @@ def fetch_new_square_customers(token, begin, end):
     return [c for c in customers if c.get("creation_source") != "INSTANT_PROFILE"]
 
 
+def fetch_all_square_customers(token):
+    customers = []
+    cursor = None
+    while True:
+        params = {"limit": 100}
+        if cursor:
+            params["cursor"] = cursor
+        resp = request_with_retry("GET", "https://connect.squareup.com/v2/customers",
+                                  headers=square_headers(token), params=params)
+        if resp.status_code != 200:
+            log.warning(f"Square顧客一覧エラー(自動登録スキップ): {resp.status_code}")
+            return None
+        data = resp.json()
+        customers.extend(data.get("customers", []))
+        cursor = data.get("cursor")
+        if not cursor:
+            return customers
+
+
 def square_display_name(cust):
     family = (cust.get("family_name") or "").strip()
     given = (cust.get("given_name") or "").strip()
@@ -379,6 +398,53 @@ def same_night_candidates(notion_customers, visit_records):
         if page and not page["square_id"] and page not in out:
             out.append(page)
     return out
+
+
+def register_missing_in_square(sq_token, notion_token, notion_customers, biz_date, dry_run):
+    """Square顧客IDが未設定のNotion顧客(前夜のSlack記録から生まれた新規客など)を
+    Squareに自動登録し、次回来店時にレジ検索で選べるようにする。
+    同名のSquare顧客が既にいれば作成せず紐付けのみ(重複防止)。
+    現場でSquareに顧客を新規作成する運用は廃止(2026-07-27 布田さん判断:
+    会計時点では名前が分からないのが普通のため、入口はSlackメモに一本化)。"""
+    targets = [c for c in notion_customers
+               if not c["square_id"] and normalize_name(c["name"])]
+    if not targets:
+        return []
+    all_sq = fetch_all_square_customers(sq_token)
+    if all_sq is None:
+        return []
+    index = {}
+    for c in all_sq:
+        for f in square_name_forms(c):
+            index.setdefault(f, c)
+    results = []
+    for nc in targets:
+        norm = normalize_name(nc["name"])
+        if norm in index:
+            sqid = index[norm]["id"]
+            action = "既存に紐付け"
+        elif dry_run:
+            sqid = "dry-run-id"
+            action = "登録"
+        else:
+            body = {"idempotency_key": f"autoreg-{nc['page_id']}",
+                    "family_name": nc["name"],
+                    "reference_id": nc["page_id"],
+                    "note": f"Slack記録から自動登録 {biz_date.isoformat()}"}
+            resp = request_with_retry("POST", "https://connect.squareup.com/v2/customers",
+                                      headers=square_headers(sq_token), json_body=body)
+            if resp.status_code != 200:
+                log.warning(f"Square自動登録失敗 ({nc['name']}): {resp.status_code} {resp.text[:120]}")
+                continue
+            sqid = resp.json()["customer"]["id"]
+            action = "登録"
+        notion_patch_page(notion_token, nc["page_id"],
+                          {"Square顧客ID": {"rich_text": [{"text": {"content": sqid}}]}},
+                          dry_run)
+        nc["square_id"] = sqid
+        log.info(f"Square自動{action}: {nc['name']}")
+        results.append((nc["name"], action))
+    return results
 
 
 def match_notion_customer(square_cust, notion_customers):
@@ -673,6 +739,13 @@ def main():
                        "gap": gap if gap and gap > 0 else None,
                        "total": agg["total"], "items": agg["items"],
                        "created": created, "auto": auto_linked})
+
+    # 前夜のSlack記録から生まれた新規客をSquareへ自動登録 (次回来店時に検索で出る)
+    registered = register_missing_in_square(env["SQUARE_ACCESS_TOKEN"], notion_token,
+                                            notion_customers, biz_date, args.dry_run)
+    if registered:
+        names = "、".join(n for n, _ in registered)
+        notes.append(f"Squareに自動登録: {names} (次回来店からレジ検索で選べます)")
 
     visits.sort(key=lambda v: -v["total"])
     message = build_message(biz_date, len(orders), visits, unmatched, new_customers, notes)
