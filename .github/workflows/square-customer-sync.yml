@@ -38,7 +38,8 @@ jobs:
           NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
           NOTION_VISIT_DB_ID: ${{ secrets.NOTION_VISIT_DB_ID }}
           NOTION_CUSTOMER_DB_ID: ${{ secrets.NOTION_CUSTOMER_DB_ID }}
-          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+          # 投稿はsquare-bot (slack-report系)。customer-record用のSLACK_BOT_TOKENはchat:writeなし
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_POST_TOKEN }}
           DAILY_CHANNEL_ID: C09TRGWEQ2H
         run: |
           ARGS=""
