@@ -336,6 +336,51 @@ def notion_create_page(token, db_id, props, dry_run):
 # 照合・集計
 # ──────────────────────────────
 
+def kana_fold(s):
+    """カタカナ→ひらがな (表記ゆれ吸収用)"""
+    return "".join(chr(ord(c) - 0x60) if "ァ" <= c <= "ヶ" else c for c in s)
+
+
+def names_similar(square_cust, notion_name):
+    """自動紐付けの安全弁: 先頭文字一致か包含があれば「似ている」"""
+    b = kana_fold(normalize_name(notion_name))
+    for form in square_name_forms(square_cust):
+        a = kana_fold(form)
+        if a and b and (a[0] == b[0] or a in b or b in a):
+            return True
+    return False
+
+
+def visit_title_name(title):
+    """来店記録タイトル「M/D 名前　注文...」から正規化名を抽出"""
+    m = re.match(r"^\d{1,2}/\d{1,2}\s*(.+)$", title)
+    body = m.group(1) if m else title
+    return normalize_name(body.split("　")[0].strip())
+
+
+def same_night_candidates(notion_customers, visit_records):
+    """当夜の来店記録に載っていて Square顧客ID が未設定の Notion 顧客
+    (= Slack には記録されたが Square と未紐付けの人 = 自動紐付けの候補)"""
+    by_norm = {}
+    for c in notion_customers:
+        n = normalize_name(c["name"])
+        if n:
+            by_norm.setdefault(n, c)
+    by_id = {c["page_id"]: c for c in notion_customers}
+    out = []
+    for r in visit_records:
+        page = None
+        for rid in r["relation_ids"]:
+            if rid in by_id:
+                page = by_id[rid]
+                break
+        if page is None:
+            page = by_norm.get(visit_title_name(r["title"]))
+        if page and not page["square_id"] and page not in out:
+            out.append(page)
+    return out
+
+
 def match_notion_customer(square_cust, notion_customers):
     """Square顧客ID → 名前照合 (完全一致→正規化一致) の順。containsなし"""
     sq_id = square_cust["id"]
@@ -437,11 +482,13 @@ def post_slack(token, channel, text, dry_run):
 WEEKDAYS_JA = ["月", "火", "水", "木", "金", "土", "日"]
 
 
-def build_message(biz_date, total_orders, visits, unmatched, new_customers):
+def build_message(biz_date, total_orders, visits, unmatched, new_customers, notes=None):
     d = f"{biz_date.month}/{biz_date.day}({WEEKDAYS_JA[biz_date.weekday()]})"
     lines = [f"*Square顧客連携 | {d} 営業分*"]
     attached = len(visits) + len(unmatched)
     lines.append(f"会計 {total_orders}件 / 顧客紐付き {attached}件")
+    for n in (notes or []):
+        lines.append(n)
 
     if visits:
         lines.append("")
@@ -449,7 +496,8 @@ def build_message(biz_date, total_orders, visits, unmatched, new_customers):
         for v in visits:
             gap = f"前回から{v['gap']}日" if v["gap"] is not None else "初回"
             src = "" if v["created"] else " (Slack記録に追記)"
-            lines.append(f"・{v['name']} — {v['count']}回目 / {gap} / ¥{v['total']:,}{src}")
+            auto = " (自動紐付け)" if v.get("auto") else ""
+            lines.append(f"・{v['name']} — {v['count']}回目 / {gap} / ¥{v['total']:,}{src}{auto}")
             if v["items"]:
                 lines.append(f"    {v['items']}")
     if unmatched:
@@ -515,8 +563,8 @@ def main():
     visit_records = load_visit_records(notion_token, env["NOTION_VISIT_DB_ID"], biz_date)
     log.info(f"対象期間の来店記録: {len(visit_records)}件")
 
-    visits = []
-    unmatched = []
+    # Square顧客の解決: ID照合 → 名前照合 → 同夜1対1の自動紐付け
+    sq_list = []
     for cid, cust_orders in by_customer.items():
         sq_cust = fetch_square_customer(env["SQUARE_ACCESS_TOKEN"], cid)
         if not sq_cust:
@@ -525,14 +573,47 @@ def main():
         if sq_cust.get("creation_source") == "INSTANT_PROFILE":
             log.info(f"INSTANT_PROFILEをスキップ: {square_display_name(sq_cust)}")
             continue
-        agg = aggregate_orders(cust_orders)
-        matched = match_notion_customer(sq_cust, notion_customers)
-        if not matched:
-            log.info(f"未照合: {square_display_name(sq_cust)}")
-            unmatched.append({"name": square_display_name(sq_cust),
-                              "total": agg["total"], "items": agg["items"]})
-            continue
+        sq_list.append((sq_cust, cust_orders))
 
+    resolved = []
+    pending = []
+    for sq_cust, cust_orders in sq_list:
+        m = match_notion_customer(sq_cust, notion_customers)
+        if m:
+            resolved.append((sq_cust, cust_orders, m, False))
+        else:
+            pending.append((sq_cust, cust_orders))
+
+    # 表記が違っても、同じ夜に「Square側の未知の1人」と「Slack記録の未紐付けの1人」
+    # しかいなければ同一人物とみなして自動紐付け (名前の類似を安全弁に)
+    notes = []
+    candidates = same_night_candidates(notion_customers, visit_records) if pending else []
+    if (len(pending) == 1 and len(candidates) == 1
+            and names_similar(pending[0][0], candidates[0]["name"])):
+        sq_cust, cust_orders = pending.pop()
+        cand = candidates[0]
+        notion_patch_page(notion_token, cand["page_id"],
+                          {"Square顧客ID": {"rich_text": [{"text": {"content": sq_cust["id"]}}]}},
+                          args.dry_run)
+        cand["square_id"] = sq_cust["id"]
+        resolved.append((sq_cust, cust_orders, cand, True))
+        notes.append(f"自動紐付け: Square「{square_display_name(sq_cust)}」= {cand['name']} "
+                     f"(同夜の記録が1対1。違っていたら教えてください)")
+        log.info(notes[-1])
+    elif pending and candidates:
+        cnames = " / ".join(c["name"] for c in candidates)
+        notes.append(f"当夜のSlack記録で未紐付け: {cnames} — 未照合の会計と同一人物がいれば教えてください")
+
+    visits = []
+    unmatched = []
+    for sq_cust, cust_orders in pending:
+        agg = aggregate_orders(cust_orders)
+        log.info(f"未照合: {square_display_name(sq_cust)}")
+        unmatched.append({"name": square_display_name(sq_cust),
+                          "total": agg["total"], "items": agg["items"]})
+
+    for sq_cust, cust_orders, matched, auto_linked in resolved:
+        agg = aggregate_orders(cust_orders)
         log.info(f"照合成功: {square_display_name(sq_cust)} → {matched['name']}")
         record = find_visit_record(visit_records, matched["page_id"],
                                    square_name_forms(sq_cust) + [normalize_name(matched["name"])])
@@ -546,7 +627,8 @@ def main():
                 gap = days_since(matched["last_visit"], biz_date)
                 visits.append({"name": matched["name"], "count": matched["count"],
                                "gap": gap if gap and gap > 0 else None,
-                               "total": agg["total"], "items": agg["items"], "created": False})
+                               "total": agg["total"], "items": agg["items"],
+                               "created": False, "auto": auto_linked})
                 continue
             square_line = f"[Square] {agg['items']} ¥{agg['total']:,}"
             new_text = f"{record['order_text']}\n{square_line}" if record["order_text"] else square_line
@@ -589,10 +671,11 @@ def main():
 
         visits.append({"name": matched["name"], "count": new_count,
                        "gap": gap if gap and gap > 0 else None,
-                       "total": agg["total"], "items": agg["items"], "created": created})
+                       "total": agg["total"], "items": agg["items"],
+                       "created": created, "auto": auto_linked})
 
     visits.sort(key=lambda v: -v["total"])
-    message = build_message(biz_date, len(orders), visits, unmatched, new_customers)
+    message = build_message(biz_date, len(orders), visits, unmatched, new_customers, notes)
     post_slack(env["SLACK_BOT_TOKEN"], env["DAILY_CHANNEL_ID"], message, args.dry_run)
     log.info(f"=== 完了: サマリー{len(visits)}名 / 未照合{len(unmatched)}名 / 新規{len(new_customers)}名 ===")
 
