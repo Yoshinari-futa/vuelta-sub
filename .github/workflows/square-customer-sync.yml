@@ -1,0 +1,51 @@
+name: Square Customer Sync (Square → Notion + Slack)
+
+on:
+  schedule:
+    # 毎日 20:00 UTC = 翌朝 5:00 JST (営業日切替 05:00 の直後。実行は遅延で 5:00-6:30 JST)
+    - cron: '0 20 * * *'
+  workflow_dispatch:
+    inputs:
+      date:
+        description: '対象営業日 YYYY-MM-DD (空欄=直近の完了営業日)'
+        required: false
+      dry_run:
+        description: 'dry-run (書き込み・Slack投稿なし)'
+        type: boolean
+        default: false
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install -r scripts/square-customer-sync/requirements.txt
+
+      - name: Run sync
+        env:
+          SQUARE_ACCESS_TOKEN: ${{ secrets.SQUARE_ACCESS_TOKEN }}
+          SQUARE_LOCATION_ID: ${{ secrets.SQUARE_LOCATION_ID }}
+          NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
+          NOTION_VISIT_DB_ID: ${{ secrets.NOTION_VISIT_DB_ID }}
+          NOTION_CUSTOMER_DB_ID: ${{ secrets.NOTION_CUSTOMER_DB_ID }}
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+          DAILY_CHANNEL_ID: C09TRGWEQ2H
+        run: |
+          ARGS=""
+          if [ -n "${{ github.event.inputs.date }}" ]; then
+            ARGS="$ARGS --date ${{ github.event.inputs.date }}"
+          fi
+          if [ "${{ github.event.inputs.dry_run }}" = "true" ]; then
+            ARGS="$ARGS --dry-run"
+          fi
+          python scripts/square-customer-sync/square_customer_sync.py $ARGS
