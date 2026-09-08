@@ -5,7 +5,7 @@
  *
  * v16: 7段ティア化 (2026-09-08)
  *   白: 0〜3, ピンク: 4〜9, 銀: 10〜19, 金: 20〜39, 濃緑: 40〜69, 黒: 70〜99, 虹: 100+
- *   NEXT 欄(metaData.nextColor)に「あと◯回で◯」を毎スキャン更新
+ *   NEXT 欄(metaData.nextColor)に「Silver in 3 visits」を毎スキャン更新(v16.1で英語化)
  */
 
 const parseVisitCount = require('../lib/parse-visit-count');
@@ -27,7 +27,7 @@ const {
   findMemberByExternalId,
 } = require('../lib/coupons');
 
-const SCAN_API_VERSION = '2026-09-08-v16-seven-tiers';
+const SCAN_API_VERSION = '2026-09-08-v16.1-next-en';
 
 // ティア閾値・判定・NEXT文言は ../lib/tiers.js が正本
 
@@ -257,7 +257,7 @@ module.exports = async function handler(req, res) {
       isBirthdayMonth: !!extra.isBirthdayMonth,
       birthdayBonusGranted: !!extra.birthdayBonusGranted,
       message: tierChanged
-        ? `${displayName}さん ${newPoints}回目の来店！🎉 ${newTier.jp}(${newTier.label})に昇格！`
+        ? `${displayName}さん ${newPoints}回目の来店！🎉 ${newTier.label}に昇格！`
         : `${displayName}さん ${newPoints}回目の来店！`,
       via,
       foundVia,
