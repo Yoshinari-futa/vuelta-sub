@@ -11,6 +11,7 @@ const { getGeofenceLocations } = require('../lib/geofence');
 const { getReferralBackFields, getReferralMetaData } = require('../lib/referral');
 const { getWalletPushTrigger } = require('../lib/wallet-push');
 const { toPassKitDateOfBirth } = require('../lib/birthday');
+const { nextColorMessage } = require('../lib/tiers');
 
 module.exports = async function handler(req, res) {
   if (req.method !== 'POST') {
@@ -63,6 +64,7 @@ module.exports = async function handler(req, res) {
         metaData: {
           ...getReferralMetaData(extId, { birthMonth }),
           ...(birthMonth ? { birthMonth } : {}),
+          nextColor: nextColorMessage(0),  // パス表面 NEXT 欄の初期値
         },
         passOverrides: {
           imageIds: {

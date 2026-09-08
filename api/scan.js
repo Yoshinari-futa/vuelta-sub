@@ -3,13 +3,15 @@
  * バーコードスキャン → PassKit 来店回数（points）+1 & ティア自動昇格
  * Body: { memberId, secret }
  *
- * v12: Rainbow ティア追加 (100回以上)
- *   Base(白): 0〜3, Gold(金): 4〜15, Silver(銀): 16〜50, Black(黒): 51〜99, Rainbow(虹): 100+
+ * v16: 7段ティア化 (2026-09-08)
+ *   白: 0〜3, ピンク: 4〜9, 銀: 10〜19, 金: 20〜39, 濃緑: 40〜69, 黒: 70〜99, 虹: 100+
+ *   NEXT 欄(metaData.nextColor)に「あと◯回で◯」を毎スキャン更新
  */
 
 const parseVisitCount = require('../lib/parse-visit-count');
 const { getPassKitAuth } = require('../lib/passkit-auth');
-const { TIER_BASE, TIER_SILVER, TIER_GOLD, TIER_BLACK, TIER_RAINBOW } = require('../lib/passkit-tier-ids');
+const { TIER_BASE } = require('../lib/passkit-tier-ids');
+const { tierForVisits, nextColorMessage } = require('../lib/tiers');
 const { getGeofenceLocations } = require('../lib/geofence');
 const { getReferralBackFields, getReferralMetaData } = require('../lib/referral');
 const { getWalletPushTrigger } = require('../lib/wallet-push');
@@ -25,26 +27,9 @@ const {
   findMemberByExternalId,
 } = require('../lib/coupons');
 
-const SCAN_API_VERSION = '2026-07-12-v15-fast-lookup';
+const SCAN_API_VERSION = '2026-09-08-v16-seven-tiers';
 
-// ── ティア判定 ──
-// Base(白): 0〜3, Gold(金): 4〜15, Silver(銀): 16〜50, Black(黒): 51〜99, Rainbow(虹): 100+
-
-const TIER_THRESHOLDS = [
-  { min: 100, id: TIER_RAINBOW, label: 'Rainbow' },
-  { min: 51,  id: TIER_BLACK,   label: 'Black' },
-  { min: 16,  id: TIER_SILVER,  label: 'Silver' },
-  { min: 4,   id: TIER_GOLD,    label: 'Gold' },
-  { min: 0,   id: TIER_BASE,    label: 'Base' },
-];
-
-/** 来店回数からティアIDを決定 */
-function tierForVisits(visits) {
-  for (const t of TIER_THRESHOLDS) {
-    if (visits >= t.min) return t;
-  }
-  return TIER_THRESHOLDS[TIER_THRESHOLDS.length - 1];
-}
+// ティア閾値・判定・NEXT文言は ../lib/tiers.js が正本
 
 // ── helpers ──
 
@@ -272,7 +257,7 @@ module.exports = async function handler(req, res) {
       isBirthdayMonth: !!extra.isBirthdayMonth,
       birthdayBonusGranted: !!extra.birthdayBonusGranted,
       message: tierChanged
-        ? `${displayName}さん ${newPoints}回目の来店！🎉 ${newTier.label}ランクに昇格！`
+        ? `${displayName}さん ${newPoints}回目の来店！🎉 ${newTier.jp}(${newTier.label})に昇格！`
         : `${displayName}さん ${newPoints}回目の来店！`,
       via,
       foundVia,
@@ -303,6 +288,7 @@ module.exports = async function handler(req, res) {
       ...getReferralMetaData(member.externalId || member.id, { birthMonth: memberBirthMonth }),
       lastVisit: new Date().toISOString(),
       reminderSent: '',  // スキャン時にリマインドフラグをリセット
+      nextColor: nextColorMessage(newPoints),  // パス表面 NEXT 欄「あと◯回で◯」
     };
 
     if (birthdayBonusGranted) {
